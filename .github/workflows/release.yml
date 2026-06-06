@@ -1,0 +1,80 @@
+# Release workflow — runs on tag push (v*).
+#
+# Composer packages on public packagist.org auto-sync from the configured Git
+# repository via push-event webhook (https://packagist.org/api/github), so this
+# workflow's primary job is to (1) re-run the CI gates on the tagged commit and
+# (2) create a GitHub release pointing at the changelog entry.
+#
+# First-time submission to packagist.org is a manual user step (needs the
+# Packagist login); once the package is registered and the GitHub service hook
+# is enabled, this tag push auto-syncs the versioned release.
+
+name: Release
+
+on:
+    push:
+        tags:
+            - 'v*'
+
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                php: ['8.4', '8.5']
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+            - name: Setup PHP ${{ matrix.php }}
+              uses: shivammathur/setup-php@728c6c6b8cf02c2e48117716a91ee48313958a19 # v2
+              with:
+                  php-version: ${{ matrix.php }}
+                  coverage: none
+                  tools: composer:v2
+
+            - name: Install dependencies
+              run: composer install --prefer-dist --no-progress --no-interaction
+
+            - name: Format check
+              run: composer format:check
+
+            - name: Static analysis
+              run: composer phpstan
+
+            - name: Tests
+              run: composer test
+
+    release:
+        needs: verify
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+              with:
+                  fetch-depth: 0
+
+            - name: Extract changelog for tag
+              id: changelog
+              run: |
+                  set -euo pipefail
+                  TAG="${GITHUB_REF#refs/tags/}"
+                  VERSION="${TAG#v}"
+                  awk -v ver="$VERSION" '
+                      /^## \[/ {
+                          if (found) exit
+                          if ($0 ~ "\\[" ver "\\]") found = 1
+                          next
+                      }
+                      found { print }
+                  ' CHANGELOG.md > release-notes.md
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+            - name: Create GitHub release
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh release create "${{ steps.changelog.outputs.tag }}" \
+                      --title "${{ steps.changelog.outputs.tag }}" \
+                      --notes-file release-notes.md

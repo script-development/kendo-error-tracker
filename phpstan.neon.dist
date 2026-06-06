@@ -1,0 +1,7 @@
+# Self-analysis config — analyzes the package's own source.
+# Strict (level max), no baseline. The package is small enough to launch clean.
+
+parameters:
+    level: max
+    paths:
+        - src
