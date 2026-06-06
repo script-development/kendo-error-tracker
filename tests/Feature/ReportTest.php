@@ -97,6 +97,31 @@ it('scrubs the message before sending', function(): void {
     });
 });
 
+it('scrubs the stack trace before sending', function(): void {
+    Http::fake(['kendo.test/*' => Http::response('', 202)]);
+
+    // Capture a real Throwable whose trace string genuinely carries a scrubable
+    // token. getTraceAsString() elides argument values + the message, but embeds
+    // each frame's defining FILE PATH — so the fixture lives at a path containing
+    // a BSN-shaped token (123456789). See the fixture file for the rationale.
+    $throwable = captureThrowableFromTokenBearingPath();
+
+    // Guard against a false-green: the token must be present BEFORE scrubbing,
+    // otherwise the redaction assertion below would pass trivially.
+    expect($throwable->getTraceAsString())->toContain('123456789');
+
+    app(ErrorTracker::class)->report($throwable);
+
+    Http::assertSent(function($request): bool {
+        $body = $request->data();
+        expect($body['stack_trace'])
+            ->toContain('[REDACTED:bsn]')
+            ->not->toContain('123456789');
+
+        return true;
+    });
+});
+
 it('dispatches a job carrying the already-scrubbed payload in async mode', function(): void {
     config()->set('error-tracker.sync', false);
     Bus::fake();
