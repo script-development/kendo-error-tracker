@@ -35,6 +35,8 @@ Set the environment variables (the config reads `ERROR_TRACKER_*`):
 | `ERROR_TRACKER_ENVIRONMENT` | `environment` | Deploy environment label (defaults to `APP_ENV`). |
 | `ERROR_TRACKER_RELEASE` | `release` | Optional release identifier (git sha / version tag). |
 | `ERROR_TRACKER_SYNC` | `sync` | `false` (default) queues the report; `true` POSTs inline. |
+| `ERROR_TRACKER_CONNECT_TIMEOUT` | `connect_timeout` | Seconds to wait while connecting to the kendo host (default `2`). |
+| `ERROR_TRACKER_TIMEOUT` | `timeout` | Total seconds to wait for the POST (default `5`); bounds the call so a hung host never blocks the caller. |
 
 ```dotenv
 ERROR_TRACKER_KENDO_URL=https://script.kendo.dev

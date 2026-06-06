@@ -77,4 +77,28 @@ return [
 
     'sync' => env('ERROR_TRACKER_SYNC', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Connect timeout
+    |--------------------------------------------------------------------------
+    |
+    | Seconds to wait while establishing the connection to the kendo host. Kept
+    | short — this is fire-and-forget telemetry that must never block a request.
+    |
+     */
+
+    'connect_timeout' => env('ERROR_TRACKER_CONNECT_TIMEOUT', 2),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Timeout
+    |--------------------------------------------------------------------------
+    |
+    | Total seconds to wait for the POST to complete (connect + transfer). Bounds
+    | the call so a hung kendo host cannot stall the caller.
+    |
+     */
+
+    'timeout' => env('ERROR_TRACKER_TIMEOUT', 5),
+
 ];

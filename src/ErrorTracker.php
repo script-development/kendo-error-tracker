@@ -12,6 +12,7 @@ use Throwable;
 
 use function array_filter;
 use function error_log;
+use function is_numeric;
 use function is_scalar;
 use function mb_rtrim;
 use function sprintf;
@@ -58,22 +59,40 @@ final readonly class ErrorTracker
 
     /**
      * Perform the HTTP POST. Called inline (sync mode) or from ReportErrorJob
-     * (async mode). Every failure — timeout, 4xx, 5xx, unreachable host — is
-     * caught and logged; only a 202 is treated as success.
+     * (async mode). An explicit connect + total timeout (config-tunable, default
+     * 2s / 5s) bounds the call so a hung kendo host never blocks the caller —
+     * this is fire-and-forget telemetry. Every failure — timeout, 4xx, 5xx,
+     * unreachable host — is caught and logged; only a 202 is treated as success.
+     *
+     * If any required key (kendo_url / project / token) is empty the call is
+     * short-circuited with a distinct operator-facing log line and no POST is
+     * attempted.
      *
      * @param array<string, mixed> $payload
      */
     public function send(array $payload): void
     {
         try {
+            $kendoUrl = $this->configString('kendo_url');
+            $project = $this->configString('project');
+            $token = $this->configString('token');
+
+            if ($kendoUrl === '' || $project === '' || $token === '') {
+                error_log('[kendo-error-tracker] not configured: missing kendo_url/project/token; report dropped');
+
+                return;
+            }
+
             $url = sprintf(
                 '%s/api/projects/%s/error-events',
-                mb_rtrim($this->configString('kendo_url'), '/'),
-                $this->configString('project'),
+                mb_rtrim($kendoUrl, '/'),
+                $project,
             );
 
             $response = $this->http
-                ->withToken($this->configString('token'))
+                ->withToken($token)
+                ->connectTimeout($this->configFloat('connect_timeout', 2.0))
+                ->timeout($this->configFloat('timeout', 5.0))
                 ->acceptJson()
                 ->asJson()
                 ->post($url, $payload);
@@ -126,5 +145,16 @@ final readonly class ErrorTracker
         $value = $this->config->get('error-tracker.' . $key);
 
         return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * Read a float config value, narrowing the repository's mixed return.
+     * Non-numeric / null values fall back to the supplied default.
+     */
+    private function configFloat(string $key, float $default): float
+    {
+        $value = $this->config->get('error-tracker.' . $key);
+
+        return is_numeric($value) ? (float) $value : $default;
     }
 }
