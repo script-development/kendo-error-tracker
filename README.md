@@ -29,7 +29,7 @@ Set the environment variables (the config reads `ERROR_TRACKER_*`):
 
 | Env var | Config key | Description |
 |---|---|---|
-| `ERROR_TRACKER_KENDO_URL` | `kendo_url` | Base URL of the kendo instance (e.g. `https://kendo.example.com`). |
+| `ERROR_TRACKER_KENDO_URL` | `kendo_url` | Base URL of your kendo tenant — always `https://{tenant}.kendo.dev` (e.g. `https://script.kendo.dev`). |
 | `ERROR_TRACKER_PROJECT` | `project` | The kendo **project id** that owns the errors (the `{project}` route-key; kendo binds it by id). |
 | `ERROR_TRACKER_TOKEN` | `token` | A kendo project token carrying the `error-events:write` ability (Bearer). |
 | `ERROR_TRACKER_ENVIRONMENT` | `environment` | Deploy environment label (defaults to `APP_ENV`). |
@@ -37,7 +37,7 @@ Set the environment variables (the config reads `ERROR_TRACKER_*`):
 | `ERROR_TRACKER_SYNC` | `sync` | `false` (default) queues the report; `true` POSTs inline. |
 
 ```dotenv
-ERROR_TRACKER_KENDO_URL=https://kendo.example.com
+ERROR_TRACKER_KENDO_URL=https://script.kendo.dev
 ERROR_TRACKER_PROJECT=7
 ERROR_TRACKER_TOKEN=your-project-token
 ERROR_TRACKER_ENVIRONMENT=production
