@@ -39,6 +39,27 @@ it('swallows a connection timeout / unreachable host', function(): void {
     app(ErrorTracker::class)->report(new RuntimeException('boom'));
 })->throwsNoExceptions();
 
+it('returns promptly and swallows when the host hangs past the timeout', function(): void {
+    // A hung host surfaces as a timeout ConnectionException once the explicit
+    // ->timeout() bound is hit. The call must return without throwing and the
+    // caller is never blocked beyond the configured bound.
+    config()->set('error-tracker.connect_timeout', 1);
+    config()->set('error-tracker.timeout', 1);
+
+    Http::fake(function(): void {
+        throw new ConnectionException('cURL error 28: Operation timed out after 1000 milliseconds');
+    });
+
+    $start = microtime(true);
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
+    $elapsed = microtime(true) - $start;
+
+    // The fake throws immediately; the point is the path returns cleanly and
+    // does not hang. Reaching this assertion proves report() did not throw.
+    // Generous bound guards against an accidental real sleep.
+    expect($elapsed)->toBeLessThan(5.0);
+});
+
 it('swallows a queue dispatch failure in async mode', function(): void {
     config()->set('error-tracker.sync', false);
 
@@ -53,11 +74,24 @@ it('swallows a queue dispatch failure in async mode', function(): void {
     app(ErrorTracker::class)->report(new RuntimeException('boom'));
 })->throwsNoExceptions();
 
-it('does not throw when configuration is entirely missing', function(): void {
+it('drops the report without an HTTP call when configuration is missing', function(): void {
     config()->set('error-tracker.kendo_url', null);
     config()->set('error-tracker.project', null);
     config()->set('error-tracker.token', null);
     Http::fake();
 
     app(ErrorTracker::class)->report(new RuntimeException('boom'));
-})->throwsNoExceptions();
+
+    // The send path short-circuits on the missing-config signal: no POST is
+    // attempted, and report() returned without throwing.
+    Http::assertNothingSent();
+});
+
+it('drops the report when only one required key is missing', function(string $key): void {
+    config()->set("error-tracker.{$key}", null);
+    Http::fake();
+
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
+
+    Http::assertNothingSent();
+})->with(['kendo_url', 'project', 'token']);
