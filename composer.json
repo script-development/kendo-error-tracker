@@ -1,0 +1,57 @@
+{
+    "name": "script-development/kendo-error-tracker",
+    "description": "Laravel client library that reports scrubbed exceptions into kendo's error-tracking endpoint.",
+    "license": "MIT",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "error-tracking",
+        "kendo",
+        "exception-reporting"
+    ],
+    "require": {
+        "php": "^8.4",
+        "illuminate/contracts": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/bus": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/queue": "^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^9.0 || ^10.0",
+        "pestphp/pest": "^3.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ScriptDevelopment\\KendoErrorTracker\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ScriptDevelopment\\KendoErrorTracker\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ScriptDevelopment\\KendoErrorTracker\\ErrorTrackerServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "phpstan": "phpstan analyse",
+        "format": "pint",
+        "format:check": "pint --test"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
