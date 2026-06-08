@@ -122,6 +122,59 @@ it('scrubs the stack trace before sending', function(): void {
     });
 });
 
+it('scrubs an email that appears in the stack trace', function(): void {
+    Http::fake(['kendo.test/*' => Http::response('', 202)]);
+
+    // The fixture lives at a path containing an email token, so the token
+    // surfaces in getTraceAsString() (frame file paths), not just the message.
+    $throwable = captureThrowableFromFixture('trace-secret-jan@example.com');
+    expect($throwable->getTraceAsString())->toContain('jan@example.com');
+
+    app(ErrorTracker::class)->report($throwable);
+
+    Http::assertSent(function($request): bool {
+        expect($request->data()['stack_trace'])
+            ->toContain('[REDACTED:email]')
+            ->not->toContain('jan@example.com');
+
+        return true;
+    });
+});
+
+it('scrubs a JWT that appears in the stack trace', function(): void {
+    Http::fake(['kendo.test/*' => Http::response('', 202)]);
+
+    $throwable = captureThrowableFromFixture('trace-secret-eyJhdr.payld.sig');
+    expect($throwable->getTraceAsString())->toContain('eyJhdr.payld.sig');
+
+    app(ErrorTracker::class)->report($throwable);
+
+    Http::assertSent(function($request): bool {
+        expect($request->data()['stack_trace'])
+            ->toContain('[REDACTED:jwt]')
+            ->not->toContain('eyJhdr.payld.sig');
+
+        return true;
+    });
+});
+
+it('scrubs a Bearer credential that appears in the stack trace', function(): void {
+    Http::fake(['kendo.test/*' => Http::response('', 202)]);
+
+    $throwable = captureThrowableFromFixture('trace-secret-Bearer abc123DEFtoken');
+    expect($throwable->getTraceAsString())->toContain('Bearer abc123DEFtoken');
+
+    app(ErrorTracker::class)->report($throwable);
+
+    Http::assertSent(function($request): bool {
+        expect($request->data()['stack_trace'])
+            ->toContain('[REDACTED:bearer]')
+            ->not->toContain('abc123DEFtoken');
+
+        return true;
+    });
+});
+
 it('dispatches a job carrying the already-scrubbed payload in async mode', function(): void {
     config()->set('error-tracker.sync', false);
     Bus::fake();
