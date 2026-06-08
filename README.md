@@ -25,25 +25,35 @@ php artisan vendor:publish --tag=error-tracker-config
 
 ## Configuration
 
-Set the environment variables (the config reads `ERROR_TRACKER_*`):
+Set the environment variables (the config reads `ERROR_TRACKER_*`). Only the first **three are required** — without them a report is silently dropped. Everything below them is **optional** and has a sane default.
 
-| Env var | Config key | Description |
-|---|---|---|
-| `ERROR_TRACKER_KENDO_URL` | `kendo_url` | Base URL of your kendo tenant — always `https://{tenant}.kendo.dev` (e.g. `https://script.kendo.dev`). |
-| `ERROR_TRACKER_PROJECT` | `project` | The kendo **project id** that owns the errors (the `{project}` route-key; kendo binds it by id). |
-| `ERROR_TRACKER_TOKEN` | `token` | A kendo project token carrying the `error-events:write` ability (Bearer). |
-| `ERROR_TRACKER_ENVIRONMENT` | `environment` | Deploy environment label (defaults to `APP_ENV`). |
-| `ERROR_TRACKER_RELEASE` | `release` | Optional release identifier (git sha / version tag). |
-| `ERROR_TRACKER_SYNC` | `sync` | `false` (default) queues the report; `true` POSTs inline. |
-| `ERROR_TRACKER_CONNECT_TIMEOUT` | `connect_timeout` | Seconds to wait while connecting to the kendo host (default `2`). |
-| `ERROR_TRACKER_TIMEOUT` | `timeout` | Total seconds to wait for the POST (default `5`); bounds the call so a hung host never blocks the caller. |
+| Env var | Config key | Required? | Description |
+|---|---|---|---|
+| `ERROR_TRACKER_KENDO_URL` | `kendo_url` | **Required** | Base URL of your kendo tenant — always `https://{tenant}.kendo.dev` (e.g. `https://script.kendo.dev`). |
+| `ERROR_TRACKER_PROJECT` | `project` | **Required** | The kendo **project id** that owns the errors (the `{project}` route-key; kendo binds it by id). |
+| `ERROR_TRACKER_TOKEN` | `token` | **Required** | A kendo project token carrying the `error-events:write` ability (Bearer). |
+| `ERROR_TRACKER_ENVIRONMENT` | `environment` | Optional | Deploy environment label. May be omitted — falls back to `APP_ENV`, then `production`. Only set it to override that derived default. |
+| `ERROR_TRACKER_RELEASE` | `release` | Optional | Release identifier (git sha / version tag). May be omitted — when unset it is dropped from the payload entirely. |
+| `ERROR_TRACKER_SYNC` | `sync` | Optional | `false` (default) queues the report; `true` POSTs inline. |
+| `ERROR_TRACKER_CONNECT_TIMEOUT` | `connect_timeout` | Optional | Seconds to wait while connecting to the kendo host (default `2`). |
+| `ERROR_TRACKER_TIMEOUT` | `timeout` | Optional | Total seconds to wait for the POST (default `5`); bounds the call so a hung host never blocks the caller. |
+
+Minimal working config — just the three required vars:
 
 ```dotenv
 ERROR_TRACKER_KENDO_URL=https://script.kendo.dev
 ERROR_TRACKER_PROJECT=7
 ERROR_TRACKER_TOKEN=your-project-token
-ERROR_TRACKER_ENVIRONMENT=production
-ERROR_TRACKER_RELEASE=v1.2.3
+```
+
+The optional knobs below are shown with their defaults; leave them commented out unless you need to override:
+
+```dotenv
+# ERROR_TRACKER_ENVIRONMENT=          # defaults to APP_ENV, then "production"
+# ERROR_TRACKER_RELEASE=              # omitted from the payload when unset (e.g. v1.2.3)
+# ERROR_TRACKER_SYNC=false           # true POSTs inline instead of queueing
+# ERROR_TRACKER_CONNECT_TIMEOUT=2    # seconds to wait while connecting
+# ERROR_TRACKER_TIMEOUT=5            # total seconds to wait for the POST
 ```
 
 ## Minting a project token
@@ -98,7 +108,7 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
 }
 ```
 
-`release` is omitted when unset. No request, user, or context fields are sent — the server schema bans them.
+`environment` reflects the resolved value (your `ERROR_TRACKER_ENVIRONMENT`, else `APP_ENV`, else `production`); `release` is omitted from the body entirely when unset. No request, user, or context fields are sent — the server schema bans them.
 
 ## Scrubbing
 
