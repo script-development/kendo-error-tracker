@@ -150,11 +150,23 @@ final readonly class ErrorTracker
     /**
      * Read a float config value, narrowing the repository's mixed return.
      * Non-numeric / null values fall back to the supplied default.
+     *
+     * The coerced value is floored to positive-or-default (H-3): `is_numeric`
+     * accepts `'0'` and negatives, but a non-positive Guzzle timeout means
+     * "wait forever" — a hung kendo host would then block the caller in sync
+     * mode, breaking the swallow-on-failure / never-block invariant. A
+     * non-positive numeric therefore falls back to the supplied default.
      */
     private function configFloat(string $key, float $default): float
     {
         $value = $this->config->get('error-tracker.' . $key);
 
-        return is_numeric($value) ? (float) $value : $default;
+        if (!is_numeric($value)) {
+            return $default;
+        }
+
+        $coerced = (float) $value;
+
+        return $coerced > 0.0 ? $coerced : $default;
     }
 }
