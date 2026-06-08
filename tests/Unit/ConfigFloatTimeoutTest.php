@@ -2,8 +2,8 @@
 
 declare(strict_types = 1);
 
-use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository as Config;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -87,7 +87,7 @@ function trackerCapturingTimeouts(array $overrides): array
 
     $tracker = new ErrorTracker(
         $http,
-        Mockery::mock(Dispatcher::class),
+        Mockery::mock(Container::class),
         new Scrubber,
         new PathNormalizer('/app'),
         $configRepo,
