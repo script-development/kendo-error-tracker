@@ -6,6 +6,7 @@ namespace ScriptDevelopment\KendoErrorTracker;
 
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository as Config;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use ScriptDevelopment\KendoErrorTracker\Jobs\ReportErrorJob;
 use Throwable;
@@ -24,12 +25,20 @@ use function sprintf;
  * blocks the caller. Scrubbing + path normalization happen synchronously inside
  * report() so the payload is already safe before it crosses the queue boundary;
  * the actual HTTP POST runs inline (sync mode) or on the queue (async, default).
+ *
+ * The bus is resolved lazily from the container inside report() rather than
+ * injected, because report() is called from the consumer's exception handler:
+ * if the Bus deferred provider is unresolvable in that container state, an
+ * eager constructor dependency would throw a BindingResolutionException at
+ * resolve() time — outside report()'s try/catch — defeating the never-throw
+ * invariant and masking the original error. Resolving it inside the guard keeps
+ * the failure swallowed.
  */
 final readonly class ErrorTracker
 {
     public function __construct(
         private HttpFactory $http,
-        private Dispatcher $bus,
+        private Container $container,
         private Scrubber $scrubber,
         private PathNormalizer $pathNormalizer,
         private Config $config,
@@ -51,7 +60,7 @@ final readonly class ErrorTracker
                 return;
             }
 
-            $this->bus->dispatch(new ReportErrorJob($payload));
+            $this->container->make(Dispatcher::class)->dispatch(new ReportErrorJob($payload));
         } catch (Throwable $e) {
             error_log(sprintf('[kendo-error-tracker] report failed: %s', $e->getMessage()));
         }
