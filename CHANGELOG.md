@@ -4,6 +4,12 @@ All notable changes to `script-development/kendo-error-tracker` are documented i
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Eager `Dispatcher` injection broke the never-throw invariant.** `ErrorTracker` took `Illuminate\Contracts\Bus\Dispatcher` as a constructor dependency, so resolving the service threw a `BindingResolutionException` *before* `report()`'s try/catch whenever the Bus deferred provider was unresolvable. Because `report()` runs inside the consumer's exception handler, that throw escaped the reportable callback and replaced the original error with `Target [Illuminate\Contracts\Bus\Dispatcher] is not instantiable` (observed in a Laravel 12 app). The bus is now resolved lazily from the container inside `report()`'s guard, so the failure is swallowed and the original error is preserved.
+
 ## [0.1.0] — 2026-06-08
 
 Inaugural public release. The KD-0885 scrubber hardening below landed before

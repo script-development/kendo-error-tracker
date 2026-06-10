@@ -3,6 +3,7 @@
 declare(strict_types = 1);
 
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use ScriptDevelopment\KendoErrorTracker\ErrorTracker;
@@ -69,6 +70,22 @@ it('swallows a queue dispatch failure in async mode', function(): void {
         $dispatcher->shouldReceive('dispatch')->andThrow(new RuntimeException('queue unavailable'));
 
         return $dispatcher;
+    });
+
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
+})->throwsNoExceptions();
+
+it('swallows an unresolvable bus in async mode', function(): void {
+    // Regression: report() is called from the consumer's exception handler, and
+    // in some container states the Bus deferred provider cannot be resolved (the
+    // entry is consumed but Dispatcher is left unbound — observed in a Laravel 12
+    // app reporting an exception). Resolving the bus must happen inside report()'s
+    // guard, so a BindingResolutionException is swallowed rather than thrown out of
+    // the handler and masking the original error.
+    config()->set('error-tracker.sync', false);
+
+    $this->app->bind(Dispatcher::class, function(): Dispatcher {
+        throw new BindingResolutionException('Target [Illuminate\Contracts\Bus\Dispatcher] is not instantiable.');
     });
 
     app(ErrorTracker::class)->report(new RuntimeException('boom'));

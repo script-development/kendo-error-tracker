@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace ScriptDevelopment\KendoErrorTracker;
 
-use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -29,7 +28,7 @@ final class ErrorTrackerServiceProvider extends ServiceProvider
 
         $this->app->singleton(ErrorTracker::class, fn(Application $app): ErrorTracker => new ErrorTracker(
             $app->make(HttpFactory::class),
-            $app->make(Dispatcher::class),
+            $app,
             $app->make(Scrubber::class),
             $app->make(PathNormalizer::class),
             $app->make(Config::class),
