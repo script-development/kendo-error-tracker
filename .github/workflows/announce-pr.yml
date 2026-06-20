@@ -1,0 +1,79 @@
+# Drop this into a repo at .github/workflows/announce-pr.yml to make it a town-crier producer.
+#
+# Setup (once per repo or org):
+#   - Variable  TOWN_CRIER_URL    = https://<app>.fly.dev
+#   - Secret    TOWN_CRIER_TOKEN  = the bearer token minted for "github-action"
+#
+# Produces BOTH sides of a request's lifecycle, so the bus never drifts from GitHub:
+#   - announce: when "Agent Review Requested" lands on a PR, tell the crier once.
+#   - resolve:  when that PR closes/merges, retire its thread — otherwise a landed PR
+#               sits "open" on the bus forever (there is no GitHub->bus merge sync).
+# Joined harnesses pick up open requests from the bus — this workflow does NOT poll or review.
+#
+# Failure policy (two distinct modes, so a real problem is never silently masked):
+#   - MISSING provisioning (no TOWN_CRIER_URL/TOKEN) is a config error -> fail LOUD (red).
+#   - A bus HICCUP (cold start / transient 5xx / timeout) -> ::warning:: + stay GREEN (fail-open;
+#     a coordination-layer blip must never red a contributor's PR checks).
+# Neither job uses the GITHUB_TOKEN (they auth to the bus with TOWN_CRIER_TOKEN), so permissions
+# are dropped to nothing.
+name: town-crier producer (announce + resolve)
+
+permissions: {}
+
+on:
+  pull_request:
+    types: [labeled, closed]
+
+jobs:
+  announce:
+    if: github.event.action == 'labeled' && github.event.label.name == 'Agent Review Requested'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Announce to the crier
+        env:
+          CRIER_URL: ${{ vars.TOWN_CRIER_URL }}
+          CRIER_TOKEN: ${{ secrets.TOWN_CRIER_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ github.event.pull_request.title }}
+          REQUESTER: ${{ github.event.pull_request.user.login }}
+        run: |
+          # Missing provisioning is a config error — fail LOUD so it can't pass silently.
+          if [ -z "$CRIER_URL" ] || [ -z "$CRIER_TOKEN" ]; then
+            echo "::error::town-crier not provisioned — set the TOWN_CRIER_URL variable + TOWN_CRIER_TOKEN secret"
+            exit 1
+          fi
+          # jq builds the JSON so a PR title with quotes can't break the payload.
+          # A bus hiccup is not the PR's fault — degrade to a warning, keep the check green.
+          curl -fsS --max-time 10 -X POST "$CRIER_URL/announce" \
+            -H "Authorization: Bearer $CRIER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg pr "$PR_URL" \
+              --arg repo "$REPO" \
+              --arg title "$TITLE" \
+              --arg requester "$REQUESTER" \
+              '{pr_url:$pr, repo:$repo, title:$title, requester:$requester}')" \
+            || echo "::warning::town-crier announce failed (transient bus issue?) — not blocking the PR"
+
+  resolve:
+    if: github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'Agent Review Requested')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve on the crier
+        env:
+          CRIER_URL: ${{ vars.TOWN_CRIER_URL }}
+          CRIER_TOKEN: ${{ secrets.TOWN_CRIER_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          if [ -z "$CRIER_URL" ] || [ -z "$CRIER_TOKEN" ]; then
+            echo "::error::town-crier not provisioned — set the TOWN_CRIER_URL variable + TOWN_CRIER_TOKEN secret"
+            exit 1
+          fi
+          NOTE=$([ "$MERGED" = "true" ] && echo "merged" || echo "closed without merge")
+          curl -fsS --max-time 10 -X POST "$CRIER_URL/resolve" \
+            -H "Authorization: Bearer $CRIER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg pr "$PR_URL" --arg note "$NOTE" '{pr_url:$pr, note:$note}')" \
+            || echo "::warning::town-crier resolve failed (transient bus issue?) — not blocking the PR"
