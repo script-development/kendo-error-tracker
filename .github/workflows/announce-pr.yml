@@ -10,7 +10,13 @@
 #               sits "open" on the bus forever (there is no GitHub->bus merge sync) and
 #               joined harnesses keep getting offered already-merged work.
 # Joined harnesses pick up open requests from the bus — this workflow does NOT poll or review.
+#
+# The bus is fail-open: a town-crier hiccup (cold start, transient 5xx) must never red a
+# PR's checks, so both jobs use continue-on-error + a curl --max-time. Neither job touches
+# the GITHUB_TOKEN (they auth to the bus with TOWN_CRIER_TOKEN), so permissions are dropped.
 name: town-crier producer (announce + resolve)
+
+permissions: {}
 
 on:
   pull_request:
@@ -22,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Announce to the crier
+        continue-on-error: true
         env:
           CRIER_URL: ${{ vars.TOWN_CRIER_URL }}
           CRIER_TOKEN: ${{ secrets.TOWN_CRIER_TOKEN }}
@@ -31,7 +38,7 @@ jobs:
           REQUESTER: ${{ github.event.pull_request.user.login }}
         run: |
           # jq builds the JSON so a PR title with quotes can't break the payload.
-          curl -fsS -X POST "$CRIER_URL/announce" \
+          curl -fsS --max-time 10 -X POST "$CRIER_URL/announce" \
             -H "Authorization: Bearer $CRIER_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -n \
@@ -46,6 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Resolve on the crier
+        continue-on-error: true
         env:
           CRIER_URL: ${{ vars.TOWN_CRIER_URL }}
           CRIER_TOKEN: ${{ secrets.TOWN_CRIER_TOKEN }}
@@ -53,7 +61,7 @@ jobs:
           MERGED: ${{ github.event.pull_request.merged }}
         run: |
           NOTE=$([ "$MERGED" = "true" ] && echo "merged" || echo "closed without merge")
-          curl -fsS -X POST "$CRIER_URL/resolve" \
+          curl -fsS --max-time 10 -X POST "$CRIER_URL/resolve" \
             -H "Authorization: Bearer $CRIER_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg pr "$PR_URL" --arg note "$NOTE" '{pr_url:$pr, note:$note}')"
