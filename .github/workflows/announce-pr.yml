@@ -1,0 +1,59 @@
+# Drop this into a repo at .github/workflows/announce-pr.yml to make it a town-crier producer.
+#
+# Setup (once per repo or org):
+#   - Variable  TOWN_CRIER_URL    = https://<app>.fly.dev
+#   - Secret    TOWN_CRIER_TOKEN  = the bearer token minted for "github-action"
+#
+# Produces BOTH sides of a request's lifecycle, so the bus never drifts from GitHub:
+#   - announce: when "Agent Review Requested" lands on a PR, tell the crier once.
+#   - resolve:  when that PR closes/merges, retire its thread — otherwise a landed PR
+#               sits "open" on the bus forever (there is no GitHub->bus merge sync) and
+#               joined harnesses keep getting offered already-merged work.
+# Joined harnesses pick up open requests from the bus — this workflow does NOT poll or review.
+name: town-crier producer (announce + resolve)
+
+on:
+  pull_request:
+    types: [labeled, closed]
+
+jobs:
+  announce:
+    if: github.event.action == 'labeled' && github.event.label.name == 'Agent Review Requested'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Announce to the crier
+        env:
+          CRIER_URL: ${{ vars.TOWN_CRIER_URL }}
+          CRIER_TOKEN: ${{ secrets.TOWN_CRIER_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ github.event.pull_request.title }}
+          REQUESTER: ${{ github.event.pull_request.user.login }}
+        run: |
+          # jq builds the JSON so a PR title with quotes can't break the payload.
+          curl -fsS -X POST "$CRIER_URL/announce" \
+            -H "Authorization: Bearer $CRIER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg pr "$PR_URL" \
+              --arg repo "$REPO" \
+              --arg title "$TITLE" \
+              --arg requester "$REQUESTER" \
+              '{pr_url:$pr, repo:$repo, title:$title, requester:$requester}')"
+
+  resolve:
+    if: github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'Agent Review Requested')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve on the crier
+        env:
+          CRIER_URL: ${{ vars.TOWN_CRIER_URL }}
+          CRIER_TOKEN: ${{ secrets.TOWN_CRIER_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          NOTE=$([ "$MERGED" = "true" ] && echo "merged" || echo "closed without merge")
+          curl -fsS -X POST "$CRIER_URL/resolve" \
+            -H "Authorization: Bearer $CRIER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg pr "$PR_URL" --arg note "$NOTE" '{pr_url:$pr, note:$note}')"
