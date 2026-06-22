@@ -22,11 +22,15 @@ permissions: {}
 
 on:
   pull_request:
-    types: [labeled, unlabeled, closed]
+    # labeled  -> first announce; synchronize -> re-announce each new commit (re-review on push);
+    # unlabeled/closed -> resolve (de-announce). A synchronize on an unlabelled PR is ignored by the if.
+    types: [labeled, synchronize, unlabeled, closed]
 
 jobs:
   announce:
-    if: github.event.action == 'labeled' && github.event.label.name == 'Agent Review Requested'
+    if: >-
+      (github.event.action == 'labeled' && github.event.label.name == 'Agent Review Requested') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'Agent Review Requested'))
     runs-on: ubuntu-latest
     steps:
       - name: Announce to the crier
@@ -37,6 +41,9 @@ jobs:
           REPO: ${{ github.repository }}
           TITLE: ${{ github.event.pull_request.title }}
           REQUESTER: ${{ github.event.pull_request.user.login }}
+          # The head SHA is the change detector: a re-announce with the same head is a no-op on the
+          # bus; a new head reopens the thread for a fresh review round.
+          HEAD_OID: ${{ github.event.pull_request.head.sha }}
         run: |
           # Missing provisioning is a config error — fail LOUD so it can't pass silently.
           if [ -z "$CRIER_URL" ] || [ -z "$CRIER_TOKEN" ]; then
@@ -53,7 +60,8 @@ jobs:
               --arg repo "$REPO" \
               --arg title "$TITLE" \
               --arg requester "$REQUESTER" \
-              '{pr_url:$pr, repo:$repo, title:$title, requester:$requester}')" \
+              --arg head_oid "$HEAD_OID" \
+              '{pr_url:$pr, repo:$repo, title:$title, requester:$requester, head_oid:$head_oid}')" \
             || echo "::warning::town-crier announce failed (transient bus issue?) — not blocking the PR"
 
   resolve:
