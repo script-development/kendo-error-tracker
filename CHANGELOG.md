@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-29
+
 ### Fixed
 
 - **Eager `Dispatcher` injection broke the never-throw invariant.** `ErrorTracker` took `Illuminate\Contracts\Bus\Dispatcher` as a constructor dependency, so resolving the service threw a `BindingResolutionException` *before* `report()`'s try/catch whenever the Bus deferred provider was unresolvable. Because `report()` runs inside the consumer's exception handler, that throw escaped the reportable callback and replaced the original error with `Target [Illuminate\Contracts\Bus\Dispatcher] is not instantiable` (observed in a Laravel 12 app). The bus is now resolved lazily from the container inside `report()`'s guard, so the failure is swallowed and the original error is preserved.
