@@ -8,6 +8,7 @@ use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use PDOException;
 use ScriptDevelopment\KendoErrorTracker\Jobs\ReportErrorJob;
 use Throwable;
 
@@ -125,7 +126,7 @@ final readonly class ErrorTracker
      */
     private function buildPayload(Throwable $throwable): array
     {
-        $message = $this->scrubber->scrub($throwable->getMessage());
+        $message = $this->scrubber->scrub($this->safeMessage($throwable));
         $stackTrace = $this->scrubber->scrub(
             $this->pathNormalizer->normalize($throwable->getTraceAsString()),
         );
@@ -143,6 +144,44 @@ final readonly class ErrorTracker
         // KD-0771 marks `release` nullable; drop it when unset so the payload
         // matches `{environment, release?, exception_class, message, stack_trace}`.
         return array_filter($payload, static fn(mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * Resolve the message to send: a database-carrier strip for any
+     * `PDOException` (including Laravel's `QueryException`, which extends
+     * it), otherwise the exception's own message unchanged (still passed
+     * through the Scrubber afterwards either way).
+     *
+     * A `QueryException` message embeds the full SQL string with bound
+     * parameter values interpolated in — free-text data (a name, an address,
+     * a care-data note) that is not a regex-able secret shape and would
+     * otherwise leak on the most common database-error path. The fingerprint
+     * (exception class + SQLSTATE + driver error code) survives; the bound
+     * values do not.
+     */
+    private function safeMessage(Throwable $throwable): string
+    {
+        return $throwable instanceof PDOException
+            ? $this->databaseCarrierMessage($throwable)
+            : $throwable->getMessage();
+    }
+
+    /**
+     * Build the class + SQLSTATE + driver-error-code fingerprint that
+     * replaces a database exception's message. `errorInfo` is PDO's
+     * `[SQLSTATE, driver code, driver message]` triple; `QueryException`
+     * copies it from its wrapped PDOException. Either piece may be absent
+     * (mocked/manually-constructed exceptions, or a previous exception that
+     * was not itself a PDOException), so both fall back to "unknown".
+     */
+    private function databaseCarrierMessage(PDOException $throwable): string
+    {
+        $errorInfo = $throwable->errorInfo;
+
+        $sqlState = isset($errorInfo[0]) && is_scalar($errorInfo[0]) ? (string) $errorInfo[0] : 'unknown';
+        $driverCode = isset($errorInfo[1]) && is_scalar($errorInfo[1]) ? (string) $errorInfo[1] : 'unknown';
+
+        return sprintf('%s [SQLSTATE %s] [driver code %s]', $throwable::class, $sqlState, $driverCode);
     }
 
     /**
