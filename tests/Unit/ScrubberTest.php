@@ -26,16 +26,30 @@ it('redacts a Bearer token', function(): void {
         ->not->toContain('abc123DEF456ghi');
 });
 
-it('redacts a BSN', function(): void {
-    $out = $this->scrubber->scrub('citizen 123456789 reported');
+it('redacts a valid BSN', function(): void {
+    // 111222333 passes the eleven-test checksum (a real BSN shape), unlike an
+    // arbitrary 9-digit run.
+    $out = $this->scrubber->scrub('citizen 111222333 reported');
 
     expect($out)
         ->toContain('[REDACTED:bsn]')
-        ->not->toContain('123456789');
+        ->not->toContain('111222333');
+});
+
+it('does not redact a 9-digit run that fails the eleven-test checksum', function(): void {
+    // M-1: the KD-0885 fix over-redacted any 9+-digit run. 123456789 is
+    // shaped like a BSN but fails the checksum, so it must now pass through
+    // untouched — this is a legitimate order/invoice/timestamp-shaped ID.
+    $clean = 'order 123456789 placed';
+
+    expect($this->scrubber->scrub($clean))
+        ->toBe($clean)
+        ->not->toContain('[REDACTED:bsn]');
 });
 
 it('redacts a formatted BSN', function(string $formatted): void {
     // C-1: grouped forms with `.`, space, or `-` separators must redact.
+    // 123.456.782 / 123 456 782 / 123-456-782 all pass the eleven-test checksum.
     $out = $this->scrubber->scrub("citizen {$formatted} reported");
 
     expect($out)
@@ -47,14 +61,46 @@ it('redacts a formatted BSN', function(string $formatted): void {
     'dashed' => '123-456-782',
 ]);
 
-it('redacts a 9-digit BSN embedded in a longer numeric run', function(): void {
-    // C-1: a BSN hidden inside a longer digit string (e.g. a phone number)
-    // must not escape because it borders other digits.
-    $out = $this->scrubber->scrub('phone 0612345678 logged');
+it('does not redact a formatted 9-digit group that fails the checksum', function(): void {
+    // M-1: the grouped form is validated too — a formatted-looking number that
+    // fails the eleven-test (123.456.789) must not redact.
+    $clean = 'ref 123.456.789 recorded';
+
+    expect($this->scrubber->scrub($clean))
+        ->toBe($clean)
+        ->not->toContain('[REDACTED:bsn]');
+});
+
+it('redacts a valid BSN embedded in a longer numeric run', function(): void {
+    // C-1: a real BSN hidden inside a longer digit string must not escape
+    // because it borders other digits. 123456782 (valid) is embedded starting
+    // at index 1 of the 10-digit run; the leading "9" is not part of the BSN
+    // and is left untouched.
+    $out = $this->scrubber->scrub('id 9123456782 here');
 
     expect($out)
-        ->toContain('[REDACTED:bsn]')
-        ->not->toContain('0612345678');
+        ->toBe('id 9[REDACTED:bsn] here')
+        ->not->toContain('123456782');
+});
+
+it('does not redact a phone-number-shaped digit run with no valid BSN window', function(): void {
+    // M-1: 0612345678 is a realistic Dutch mobile number. Neither of its two
+    // possible 9-digit windows passes the eleven-test checksum, so — unlike
+    // the KD-0885 bare-regex behavior — it must now pass through untouched.
+    $clean = 'phone 0612345678 logged';
+
+    expect($this->scrubber->scrub($clean))
+        ->toBe($clean)
+        ->not->toContain('[REDACTED:bsn]');
+});
+
+it('does not redact a 10-digit run containing no valid BSN window', function(): void {
+    // M-1: neither 9-digit window of 1234567890 passes the eleven-test checksum.
+    $clean = 'id 1234567890 here';
+
+    expect($this->scrubber->scrub($clean))
+        ->toBe($clean)
+        ->not->toContain('[REDACTED:bsn]');
 });
 
 it('redacts an email address', function(): void {
@@ -83,8 +129,59 @@ it('redacts an email with a unicode local part', function(): void {
         ->not->toContain('José@example.com');
 });
 
+it('redacts a database DSN password', function(): void {
+    $out = $this->scrubber->scrub('connection failed: mysql://root:s3cr3tPass@127.0.0.1:3306/app');
+
+    expect($out)
+        ->toContain('mysql://root:[REDACTED:dsn-password]@')
+        ->toContain('[REDACTED:ip]')
+        ->not->toContain('s3cr3tPass');
+});
+
+it('redacts a DSN password regardless of scheme', function(): void {
+    $out = $this->scrubber->scrub('redis://default:hunter2@cache.internal:6379/0');
+
+    expect($out)
+        ->toContain('redis://default:[REDACTED:dsn-password]@')
+        ->not->toContain('hunter2');
+});
+
+it('redacts a Stripe-style live API key', function(): void {
+    // Deliberately low-entropy placeholder (not a real key shape) so this
+    // fixture doesn't trip secret-scanning push protection on the repo.
+    $out = $this->scrubber->scrub('stripe call failed with key sk_live_FAKEFAKEFAKEFAKEFAKE01');
+
+    expect($out)
+        ->toContain('[REDACTED:api-key]')
+        ->not->toContain('sk_live_FAKEFAKEFAKEFAKEFAKE01');
+});
+
+it('redacts an AWS access key id', function(): void {
+    $out = $this->scrubber->scrub('credentials AKIAIOSFODNN7EXAMPLE rejected');
+
+    expect($out)
+        ->toContain('[REDACTED:api-key]')
+        ->not->toContain('AKIAIOSFODNN7EXAMPLE');
+});
+
+it('redacts an IPv4 address', function(): void {
+    $out = $this->scrubber->scrub('connection refused from 192.168.1.42');
+
+    expect($out)
+        ->toContain('[REDACTED:ip]')
+        ->not->toContain('192.168.1.42');
+});
+
+it('does not redact an out-of-range octet as an IPv4 address', function(): void {
+    $clean = 'value 999.999.999.999 is not an ip';
+
+    expect($this->scrubber->scrub($clean))
+        ->toBe($clean)
+        ->not->toContain('[REDACTED:ip]');
+});
+
 it('redacts multiple patterns in one string', function(): void {
-    $input = 'user alice@corp.nl bsn 987654321 token Bearer xyz789';
+    $input = 'user alice@corp.nl bsn 456789017 token Bearer xyz789';
 
     $out = $this->scrubber->scrub($input);
 
@@ -93,7 +190,7 @@ it('redacts multiple patterns in one string', function(): void {
         ->toContain('[REDACTED:bsn]')
         ->toContain('[REDACTED:bearer]')
         ->not->toContain('alice@corp.nl')
-        ->not->toContain('987654321')
+        ->not->toContain('456789017')
         ->not->toContain('xyz789');
 });
 
@@ -101,18 +198,6 @@ it('leaves non-matching strings unchanged', function(): void {
     $clean = 'Undefined array key "name" in App\Services\Foo at line 42';
 
     expect($this->scrubber->scrub($clean))->toBe($clean);
-});
-
-it('now redacts a 10-digit run that contains a 9-digit BSN', function(): void {
-    // C-1 behavior change: the widened BSN pattern matches any run of 9-or-more
-    // digits so a BSN cannot hide inside a longer digit string. This accepts
-    // increased over-redaction of legit 9+-digit IDs until the v1.5 elfproef
-    // validator distinguishes a real BSN from an arbitrary digit run.
-    $out = $this->scrubber->scrub('id 1234567890 here');
-
-    expect($out)
-        ->toContain('[REDACTED:bsn]')
-        ->not->toContain('1234567890');
 });
 
 it('does not redact a digit run shorter than 9', function(): void {

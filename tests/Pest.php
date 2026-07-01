@@ -9,13 +9,14 @@ use ScriptDevelopment\KendoErrorTracker\Tests\TestCase;
 pest()->extend(TestCase::class)->in('Feature');
 
 /**
- * Throw + catch a RuntimeException from a fixture file whose path carries a
- * BSN-shaped token, so the captured Throwable's getTraceAsString() genuinely
- * contains the token (in the frame's file path) before scrubbing runs.
+ * Throw + catch a RuntimeException from a fixture file whose path carries an
+ * eleven-test-valid BSN token, so the captured Throwable's getTraceAsString()
+ * genuinely contains the token (in the frame's file path) before scrubbing
+ * runs.
  */
-function captureThrowableFromTokenBearingPath(): Throwable
+function captureThrowableFromTokenBearingPath(): \Throwable
 {
-    return captureThrowableFromFixture('trace-secret-123456789');
+    return captureThrowableFromFixture('trace-secret-123456782');
 }
 
 /**
@@ -25,13 +26,13 @@ function captureThrowableFromTokenBearingPath(): Throwable
  * scrubbing runs — letting us prove a token of any kind (email / JWT / Bearer /
  * BSN) is scrubbed when it surfaces inside a stack trace, not just a message.
  */
-function captureThrowableFromFixture(string $fixtureDir): Throwable
+function captureThrowableFromFixture(string $fixtureDir): \Throwable
 {
     try {
         require __DIR__ . '/Fixtures/' . $fixtureDir . '/throw_with_token_in_path.php';
-    } catch (Throwable $throwable) {
+    } catch (\Throwable $throwable) {
         return $throwable;
     }
 
-    throw new RuntimeException('fixture did not throw');
+    throw new \RuntimeException('fixture did not throw');
 }
