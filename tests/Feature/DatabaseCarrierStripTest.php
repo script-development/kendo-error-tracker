@@ -57,7 +57,7 @@ it('strips the SQL and bound values from a QueryException, keeping only the fing
 it('strips a raw PDOException message the same way, not only Laravel\'s QueryException', function(): void {
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    $throwable = new \PDOException("Duplicate entry 'Jan de Vries' for key 'PRIMARY'");
+    $throwable = new PDOException("Duplicate entry 'Jan de Vries' for key 'PRIMARY'");
     $throwable->errorInfo = ['23000', 1_062, "Duplicate entry 'Jan de Vries' for key 'PRIMARY'"];
 
     app(ErrorTracker::class)->report($throwable);
@@ -66,7 +66,7 @@ it('strips a raw PDOException message the same way, not only Laravel\'s QueryExc
         $body = $request->data();
 
         expect($body['message'])
-            ->toBe(\PDOException::class . ' [SQLSTATE 23000] [driver code 1062]')
+            ->toBe(PDOException::class . ' [SQLSTATE 23000] [driver code 1062]')
             ->not->toContain('Jan de Vries');
 
         return true;
@@ -76,11 +76,11 @@ it('strips a raw PDOException message the same way, not only Laravel\'s QueryExc
 it('falls back to "unknown" when a PDOException carries no errorInfo', function(): void {
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    app(ErrorTracker::class)->report(new \PDOException('some pdo failure'));
+    app(ErrorTracker::class)->report(new PDOException('some pdo failure'));
 
     Http::assertSent(function($request): bool {
         expect($request->data()['message'])
-            ->toBe(\PDOException::class . ' [SQLSTATE unknown] [driver code unknown]');
+            ->toBe(PDOException::class . ' [SQLSTATE unknown] [driver code unknown]');
 
         return true;
     });
@@ -89,7 +89,7 @@ it('falls back to "unknown" when a PDOException carries no errorInfo', function(
 it('does not carrier-strip a non-database exception', function(): void {
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    app(ErrorTracker::class)->report(new \RuntimeException('plain failure, not a database error'));
+    app(ErrorTracker::class)->report(new RuntimeException('plain failure, not a database error'));
 
     Http::assertSent(function($request): bool {
         expect($request->data()['message'])->toBe('plain failure, not a database error');

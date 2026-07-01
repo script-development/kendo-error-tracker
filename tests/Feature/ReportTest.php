@@ -21,7 +21,7 @@ it('posts to the kendo error-events endpoint with the expected body', function()
         'kendo.test/*' => Http::response('', 202),
     ]);
 
-    app(ErrorTracker::class)->report(new \RuntimeException('boom'));
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
 
     Http::assertSent(function($request): bool {
         expect($request->url())->toBe('https://kendo.test/api/projects/7/error-events');
@@ -32,7 +32,7 @@ it('posts to the kendo error-events endpoint with the expected body', function()
             ->toHaveKeys(['environment', 'release', 'exception_class', 'message', 'stack_trace'])
             ->and($body['environment'])->toBe('production')
             ->and($body['release'])->toBe('v1.2.3')
-            ->and($body['exception_class'])->toBe(\RuntimeException::class)
+            ->and($body['exception_class'])->toBe(RuntimeException::class)
             ->and($body['message'])->toBe('boom');
 
         return true;
@@ -43,7 +43,7 @@ it('omits release when it is null', function(): void {
     config()->set('error-tracker.release', null);
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    app(ErrorTracker::class)->report(new \RuntimeException('boom'));
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
 
     Http::assertSent(function($request): bool {
         expect($request->data())->not->toHaveKey('release');
@@ -55,7 +55,7 @@ it('omits release when it is null', function(): void {
 it('treats a 202 response as success without throwing', function(): void {
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    app(ErrorTracker::class)->report(new \RuntimeException('boom'));
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
 
     // Reaching the assertion at all proves report() did not throw.
     Http::assertSentCount(1);
@@ -66,7 +66,7 @@ it('dispatches a queued job in async mode and posts nothing inline', function():
     Bus::fake();
     Http::fake();
 
-    app(ErrorTracker::class)->report(new \RuntimeException('boom'));
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
 
     Bus::assertDispatched(ReportErrorJob::class);
     Http::assertNothingSent();
@@ -76,7 +76,7 @@ it('posts inline in sync mode and dispatches no job', function(): void {
     Bus::fake();
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    app(ErrorTracker::class)->report(new \RuntimeException('boom'));
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
 
     Http::assertSentCount(1);
     Bus::assertNotDispatched(ReportErrorJob::class);
@@ -85,7 +85,7 @@ it('posts inline in sync mode and dispatches no job', function(): void {
 it('scrubs the message before sending', function(): void {
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    app(ErrorTracker::class)->report(new \RuntimeException('email leaked: secret.user@example.com'));
+    app(ErrorTracker::class)->report(new RuntimeException('email leaked: secret.user@example.com'));
 
     Http::assertSent(function($request): bool {
         $body = $request->data();
@@ -180,7 +180,7 @@ it('dispatches a job carrying the already-scrubbed payload in async mode', funct
     config()->set('error-tracker.sync', false);
     Bus::fake();
 
-    app(ErrorTracker::class)->report(new \RuntimeException('mail user@example.com'));
+    app(ErrorTracker::class)->report(new RuntimeException('mail user@example.com'));
 
     Bus::assertDispatched(ReportErrorJob::class, function(ReportErrorJob $job): bool {
         expect($job->payload['message'])

@@ -15,5 +15,5 @@ declare(strict_types = 1);
  */
 
 return (static function(): never {
-    throw new \RuntimeException('error reported from a token-bearing path');
+    throw new RuntimeException('error reported from a token-bearing path');
 })();

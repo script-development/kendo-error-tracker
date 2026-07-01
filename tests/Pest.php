@@ -14,7 +14,7 @@ pest()->extend(TestCase::class)->in('Feature');
  * genuinely contains the token (in the frame's file path) before scrubbing
  * runs.
  */
-function captureThrowableFromTokenBearingPath(): \Throwable
+function captureThrowableFromTokenBearingPath(): Throwable
 {
     return captureThrowableFromFixture('trace-secret-123456782');
 }
@@ -26,13 +26,13 @@ function captureThrowableFromTokenBearingPath(): \Throwable
  * scrubbing runs — letting us prove a token of any kind (email / JWT / Bearer /
  * BSN) is scrubbed when it surfaces inside a stack trace, not just a message.
  */
-function captureThrowableFromFixture(string $fixtureDir): \Throwable
+function captureThrowableFromFixture(string $fixtureDir): Throwable
 {
     try {
         require __DIR__ . '/Fixtures/' . $fixtureDir . '/throw_with_token_in_path.php';
-    } catch (\Throwable $throwable) {
+    } catch (Throwable $throwable) {
         return $throwable;
     }
 
-    throw new \RuntimeException('fixture did not throw');
+    throw new RuntimeException('fixture did not throw');
 }
