@@ -103,12 +103,13 @@ it('scrubs the stack trace before sending', function(): void {
     // Capture a real Throwable whose trace string genuinely carries a scrubable
     // token. getTraceAsString() elides argument values + the message, but embeds
     // each frame's defining FILE PATH — so the fixture lives at a path containing
-    // a BSN-shaped token (123456789). See the fixture file for the rationale.
+    // an eleven-test-valid BSN token (123456782). See the fixture file for the
+    // rationale.
     $throwable = captureThrowableFromTokenBearingPath();
 
     // Guard against a false-green: the token must be present BEFORE scrubbing,
     // otherwise the redaction assertion below would pass trivially.
-    expect($throwable->getTraceAsString())->toContain('123456789');
+    expect($throwable->getTraceAsString())->toContain('123456782');
 
     app(ErrorTracker::class)->report($throwable);
 
@@ -116,7 +117,7 @@ it('scrubs the stack trace before sending', function(): void {
         $body = $request->data();
         expect($body['stack_trace'])
             ->toContain('[REDACTED:bsn]')
-            ->not->toContain('123456789');
+            ->not->toContain('123456782');
 
         return true;
     });

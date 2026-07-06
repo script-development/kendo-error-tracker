@@ -118,8 +118,15 @@ Before send, the message and stack trace are scrubbed of the following patterns 
 |---|---|
 | JWT | `eyJhbGc...` (three base64url segments) |
 | Bearer token | `Bearer <credential>` |
-| BSN (Dutch citizen service number) | a 9-digit run |
+| Database DSN password | `mysql://user:pass@host` — only the password is redacted |
+| API-key prefix | `sk_live_...`, `AKIA...` |
+| IPv4 address | `192.168.1.42` |
+| BSN (Dutch citizen service number) | a 9-digit run passing the eleven-test (Dutch: elfproef) checksum |
 | Email address | `user@example.com` |
+
+BSN candidates are checksum-validated (the eleven-test) before redaction, so an arbitrary 9+-digit ID (an order number, invoice ID, or timestamp) is not falsely redacted, and a real BSN embedded in a longer digit run (e.g. a phone number) is still caught.
+
+Free-text PII that isn't a fixed secret shape — a name, address, or care-data value embedded in a database error message — is not covered by pattern matching. `QueryException` and `PDOException` are instead handled by a per-exception-type carrier-strip: the message is replaced with just the exception class, SQLSTATE, and driver error code, dropping the SQL string and bound parameter values entirely.
 
 ## Path normalization
 

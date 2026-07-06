@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **API-key prefix and IPv4 scrubbing (KD-0887).** The Scrubber now redacts Stripe-style `sk_live_...` keys, AWS `AKIA...` access key IDs, and IPv4 addresses, in addition to the existing JWT / Bearer / BSN / email coverage.
+- **Database DSN password scrubbing (KD-0887).** Any `scheme://user:pass@host` credential — not just a fixed list of DB scheme names — has its password redacted (`scheme://user:[REDACTED:dsn-password]@host`), closing the most severe gap named in the KD-0885 audit debrief.
+- **`QueryException` / `PDOException` carrier-strip (KD-0887).** A `QueryException` message embeds the full SQL string with bound parameter values interpolated in — free-text data (a name, an address, a care-data note) that is not a regex-able secret shape and previously reached the payload unredacted on the most common database-error path (surfaced by the emmie annexation, which carries NEN 7510 / AVG care data). `ErrorTracker` now replaces any `PDOException`-family message with `class [SQLSTATE x] [driver code y]` before the Scrubber even runs, dropping the SQL and bindings entirely while preserving the fingerprint.
+- **`PathNormalizer` username redaction fallback (KD-0887, M-3).** A stack frame whose path does not start with `base_path()` (vendor installed outside the app root, a globally-installed tool) previously leaked the absolute path verbatim, including the OS username. A secondary pass now redacts the username segment of any `/home/<user>/` or `/Users/<user>/` shape in those frames.
+
+### Fixed
+
+- **BSN eleven-test (Dutch: elfproef) validation (KD-0887, M-1).** The KD-0885 fix widened the BSN pattern to any run of 9-or-more digits, which resolved the missed-detection leak but over-redacted legitimate 9+-digit IDs (order numbers, invoice IDs, timestamps) as `[REDACTED:bsn]`. BSN candidates — both grouped (`123.456.782`) and bare digit runs — are now validated against the eleven-test checksum before redaction, so only a number that is actually shaped like a real BSN redacts. A digit run is scanned for any contiguous 9-digit window that passes, so a real BSN embedded in a longer number is still caught without redacting the surrounding digits.
+
 ## [0.1.1] — 2026-06-29
 
 ### Fixed

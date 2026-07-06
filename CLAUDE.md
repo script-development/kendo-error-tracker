@@ -26,8 +26,8 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 
 | Class | Responsibility |
 |---|---|
-| `ErrorTracker` | Public surface. `report(\Throwable)`: builds the scrubbed/normalized payload synchronously, then sends inline (sync) or dispatches `ReportErrorJob` (async). `send(array)`: the HTTP POST, swallow-on-failure. Reads config live from the `Config` repository. |
-| `Scrubber` | Redacts JWT / Bearer / BSN / email from a string. |
+| `ErrorTracker` | Public surface. `report(\Throwable)`: builds the scrubbed/normalized payload synchronously, then sends inline (sync) or dispatches `ReportErrorJob` (async). Any `\PDOException` (including Laravel's `QueryException`, which extends it) gets a carrier-strip first — the message becomes `class [SQLSTATE x] [driver code y]`, dropping the SQL string and bound parameter values before the Scrubber even runs. `send(array)`: the HTTP POST, swallow-on-failure. Reads config live from the `Config` repository. |
+| `Scrubber` | Redacts JWT / Bearer / DSN password / API-key prefix / IPv4 / BSN (eleven-test validated) / email from a string. |
 | `PathNormalizer` | Exact `base_path()` prefix strip of every frame (mirrors `laravel/nightwatch`'s `Location::normalizeFile()`). |
 | `Jobs\ReportErrorJob` | Async carrier for the already-scrubbed payload. `$tries = 1` (0 retries); `failed()` logs to `error_log`, never requeues. |
 | `ErrorTrackerServiceProvider` | Auto-discovered. Merges + publishes config; binds `ErrorTracker` + `PathNormalizer` (wired to the app's `base_path()`). |
@@ -54,6 +54,6 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 
 SemVer. Pre-1.0 (`0.x`): minor bumps are treated as breaking (Composer's `^0.x` caret locks at minor). `main` is always release-ready; PRs update `CHANGELOG.md` under `[Unreleased]`; a release PR moves it to a versioned heading and tags the merge commit (`v0.x.y`). Packagist's webhook picks up the tag; `release.yml` re-runs CI and creates the GitHub release.
 
-## Out of scope (v1)
+## Out of scope
 
-Client-side coalescing/debounce (server owns dedup + rate limit), per-project custom scrub rules (v1.5), a framework-agnostic core (Laravel-only), a JS/TS client (v1.5+), Sentry shim, context fields (schema-banned), API-key-prefix / IPv4 scrubbing (v1.5).
+Client-side coalescing/debounce (server owns dedup + rate limit), per-project custom scrub rules (v1.5), a framework-agnostic core (Laravel-only), a JS/TS client (v1.5+), Sentry shim, context fields (schema-banned), phone numbers / session IDs as scrub patterns (no shape distinct enough to redact without a high false-positive rate), a `RequestException` message-body carrier-strip (raised as a "consider" in the KD-0887 discussion, referencing the war-room Nightwatch-egress recon — no concrete shape/threshold was specified, so it's deferred pending that follow-up rather than guessed at here).

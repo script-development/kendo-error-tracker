@@ -9,13 +9,14 @@ use ScriptDevelopment\KendoErrorTracker\Tests\TestCase;
 pest()->extend(TestCase::class)->in('Feature');
 
 /**
- * Throw + catch a RuntimeException from a fixture file whose path carries a
- * BSN-shaped token, so the captured Throwable's getTraceAsString() genuinely
- * contains the token (in the frame's file path) before scrubbing runs.
+ * Throw + catch a RuntimeException from a fixture file whose path carries an
+ * eleven-test-valid BSN token, so the captured Throwable's getTraceAsString()
+ * genuinely contains the token (in the frame's file path) before scrubbing
+ * runs.
  */
 function captureThrowableFromTokenBearingPath(): Throwable
 {
-    return captureThrowableFromFixture('trace-secret-123456789');
+    return captureThrowableFromFixture('trace-secret-123456782');
 }
 
 /**
