@@ -16,6 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Fixed
 
 - **BSN eleven-test (Dutch: elfproef) validation (KD-0887, M-1).** The KD-0885 fix widened the BSN pattern to any run of 9-or-more digits, which resolved the missed-detection leak but over-redacted legitimate 9+-digit IDs (order numbers, invoice IDs, timestamps) as `[REDACTED:bsn]`. BSN candidates — both grouped (`123.456.782`) and bare digit runs — are now validated against the eleven-test checksum before redaction, so only a number that is actually shaped like a real BSN redacts. A digit run is scanned for any contiguous 9-digit window that passes, so a real BSN embedded in a longer number is still caught without redacting the surrounding digits.
+
+## [0.1.1] — 2026-06-29
+
+### Fixed
+
 - **Eager `Dispatcher` injection broke the never-throw invariant.** `ErrorTracker` took `Illuminate\Contracts\Bus\Dispatcher` as a constructor dependency, so resolving the service threw a `BindingResolutionException` *before* `report()`'s try/catch whenever the Bus deferred provider was unresolvable. Because `report()` runs inside the consumer's exception handler, that throw escaped the reportable callback and replaced the original error with `Target [Illuminate\Contracts\Bus\Dispatcher] is not instantiable` (observed in a Laravel 12 app). The bus is now resolved lazily from the container inside `report()`'s guard, so the failure is swallowed and the original error is preserved.
 
 ## [0.1.0] — 2026-06-08
