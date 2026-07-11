@@ -1,0 +1,42 @@
+# Dependabot configuration — kendo-error-tracker (composer-only published package).
+# War Room fleet standard (see war-room templates/dependabot.yml). Default branch: main.
+#
+# composer-only: no npm block. illuminate/* runtime deps are intentionally
+# NOT grouped so a Laravel-compat bump lands as a solo, reviewed PR (the
+# library's illuminate/* ^11–13 range is its load-bearing contract).
+version: 2
+updates:
+    - package-ecosystem: composer
+      directory: /
+      target-branch: main
+      schedule:
+          interval: weekly
+          day: monday
+          time: '06:00'
+          timezone: 'Europe/Amsterdam'
+      groups:
+          dev-tooling:
+              update-types:
+                  - 'minor'
+                  - 'patch'
+              patterns:
+                  - 'pestphp/*'
+                  - 'phpstan/*'
+                  - 'larastan/*'
+                  - 'laravel/pint'
+                  - 'orchestra/*'
+      open-pull-requests-limit: 10
+      labels:
+          - dependencies
+
+    - package-ecosystem: github-actions
+      directory: /
+      target-branch: main
+      schedule:
+          interval: weekly
+          day: monday
+          time: '06:00'
+          timezone: 'Europe/Amsterdam'
+      open-pull-requests-limit: 5
+      labels:
+          - ci
