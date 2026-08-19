@@ -1,10 +1,16 @@
 # Release workflow — runs on tag push (v*).
 #
-# Composer packages on public packagist.org auto-sync from the configured Git
-# repository via push-event webhook (https://packagist.org/api/github), so this
-# workflow's primary job is to (1) re-run the CI gates on the tagged commit and
-# (2) create a GitHub release pointing at the changelog entry.
+# `verify` re-runs the repository's gates against the tagged commit — audit,
+# format, static analysis, and the coverage suite — and `release` then creates
+# a GitHub release pointing at the changelog entry.
 #
+# WR-0796: `coverage: pcov` and `composer test:coverage` are a matched pair.
+# Dropping the script silently removes the --min=95 coverage gate from tagged
+# builds; dropping the driver fails the job outright ("No code coverage driver
+# is available"). Change both or neither.
+#
+# Composer packages on public packagist.org auto-sync from the configured Git
+# repository via push-event webhook (https://packagist.org/api/github).
 # First-time submission to packagist.org is a manual user step (needs the
 # Packagist login); once the package is registered and the GitHub service hook
 # is enabled, this tag push auto-syncs the versioned release.
@@ -30,7 +36,7 @@ jobs:
               uses: shivammathur/setup-php@728c6c6b8cf02c2e48117716a91ee48313958a19 # v2
               with:
                   php-version: ${{ matrix.php }}
-                  coverage: none
+                  coverage: pcov
                   tools: composer:v2
 
             - name: Install dependencies
@@ -46,7 +52,7 @@ jobs:
               run: composer phpstan
 
             - name: Tests
-              run: composer test
+              run: composer test:coverage
 
     release:
         needs: verify
