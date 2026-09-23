@@ -17,7 +17,9 @@ use function error_log;
 use function is_numeric;
 use function is_scalar;
 use function mb_rtrim;
+use function preg_replace;
 use function sprintf;
+use function str_contains;
 
 /**
  * The public client surface: report a Throwable into kendo's error tracker.
@@ -136,7 +138,7 @@ final readonly class ErrorTracker
         $payload = [
             'environment' => $this->configString('environment'),
             'release' => $release === null ? null : $this->configString('release'),
-            'exception_class' => $throwable::class,
+            'exception_class' => $this->exceptionClass($throwable),
             'message' => $message,
             'stack_trace' => $stackTrace,
         ];
@@ -144,6 +146,27 @@ final readonly class ErrorTracker
         // KD-0771 marks `release` nullable; drop it when unset so the payload
         // matches `{environment, release?, exception_class, message, stack_trace}`.
         return array_filter($payload, static fn(mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * The reported class name. A named class is sent verbatim. An anonymous
+     * class name (`Parent@anonymous\0/abs/path/file.php:LINE$N`) embeds the
+     * consumer's absolute install path and `$N`, PHP's process-global compile
+     * counter; both would leak the path and split one fingerprint per deploy
+     * (KD-0771 D6, WR-0798). The counter is dropped and the declaration
+     * location takes the same PathNormalizer + Scrubber passes as the trace.
+     */
+    private function exceptionClass(Throwable $throwable): string
+    {
+        $class = $throwable::class;
+
+        if (!str_contains($class, "@anonymous\0")) {
+            return $class;
+        }
+
+        $class = (string) preg_replace('/\$[0-9a-f]+$/', '', $class);
+
+        return $this->scrubber->scrub($this->pathNormalizer->normalize($class));
     }
 
     /**
@@ -181,7 +204,7 @@ final readonly class ErrorTracker
         $sqlState = isset($errorInfo[0]) && is_scalar($errorInfo[0]) ? (string) $errorInfo[0] : 'unknown';
         $driverCode = isset($errorInfo[1]) && is_scalar($errorInfo[1]) ? (string) $errorInfo[1] : 'unknown';
 
-        return sprintf('%s [SQLSTATE %s] [driver code %s]', $throwable::class, $sqlState, $driverCode);
+        return sprintf('%s [SQLSTATE %s] [driver code %s]', $this->exceptionClass($throwable), $sqlState, $driverCode);
     }
 
     /**
