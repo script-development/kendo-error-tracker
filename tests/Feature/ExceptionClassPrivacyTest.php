@@ -5,6 +5,7 @@ declare(strict_types = 1);
 use Illuminate\Support\Facades\Http;
 use ScriptDevelopment\KendoErrorTracker\ErrorTracker;
 use ScriptDevelopment\KendoErrorTracker\PathNormalizer;
+use ScriptDevelopment\KendoErrorTracker\Tests\Fixtures\Order123456782Exception;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 // WR-0798: an anonymous class name is `Parent@anonymous\0/abs/path/file.php:LINE$N`.
@@ -117,4 +118,5 @@ it('sends a named exception class byte-identical to the class name', function(Th
 })->with([
     'global class' => fn(): Throwable => new RuntimeException('boom'),
     'namespaced class' => fn(): Throwable => new NotFoundHttpException('gone'),
+    'scrubber-shaped class' => fn(): Throwable => new Order123456782Exception('boom'),
 ]);
