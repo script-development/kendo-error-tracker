@@ -158,11 +158,11 @@ final readonly class ErrorTracker
      * class name (`Parent@anonymous\0/abs/path/file.php:LINE$N`) embeds the
      * consumer's absolute install path and `$N`, PHP's process-global compile
      * counter; both would leak the path and split one fingerprint per deploy
-     * (KD-0771 D6, WR-0798). The counter is dropped and the declaration file
-     * takes the PathNormalizer pass. A file still absolute after it (declared
-     * outside the base path) keeps only its basename, so no absolute path
-     * leaves and the value is install-location independent. A name that does
-     * not parse is cut to `Parent@anonymous`.
+     * (KD-0771 D6, WR-0798). The counter is dropped. A declaration file under
+     * the base path is sent relative to it; any other file (outside the base
+     * path, or a stream-wrapper URI such as `phar://`) keeps only its basename,
+     * so no install path leaves and the value is install-location independent.
+     * A name that does not parse is cut to `Parent@anonymous`.
      */
     private function exceptionClass(Throwable $throwable): string
     {
@@ -179,11 +179,8 @@ final readonly class ErrorTracker
             return $parent;
         }
 
-        $file = $this->pathNormalizer->normalize($location[1]);
-
-        if (preg_match('#\A(?:[/\\\]|[A-Za-z]:[/\\\])#', $file) === 1) {
-            $file = '[REDACTED:path]/' . (string) preg_replace('#\A.*[/\\\]#s', '', $file);
-        }
+        $file = $this->pathNormalizer->relativize($location[1])
+            ?? '[REDACTED:path]/' . (string) preg_replace('#\A.*[/\\\]#s', '', $location[1]);
 
         return $this->scrubber->scrub(sprintf("%s\0%s:%s", $parent, $file, $location[2]));
     }

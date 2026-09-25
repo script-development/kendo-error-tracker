@@ -141,6 +141,27 @@ it('keeps an out-of-base install path out of a database carrier message built fr
         ->not->toContain(sys_get_temp_dir());
 });
 
+it('drops the stream-wrapper path of an anonymous class declared inside a phar archive', function(): void {
+    @mkdir($this->installRoot . '/releases', 0o777, true);
+    $archive = new PharData($this->installRoot . '/releases/app.tar');
+    $archive->addFromString(
+        'Failure.php',
+        "<?php\nreturn new class('insert into users (name) values (Jan)') extends PDOException {};\n",
+    );
+
+    $throwable = require 'phar://' . $this->installRoot . '/releases/app.tar/Failure.php';
+
+    expect($throwable::class)->toContain('phar://' . $this->installRoot);
+
+    $body = reportedBodyUnder($this->installRoot . '/current', $throwable);
+
+    expect($body['exception_class'])
+        ->toBe("PDOException@anonymous\0[REDACTED:path]/Failure.php:2")
+        ->and($body['message'])
+        ->toBe("PDOException@anonymous\0[REDACTED:path]/Failure.php:2 [SQLSTATE unknown] [driver code unknown]")
+        ->not->toContain(sys_get_temp_dir());
+});
+
 it('scrubs a secret in the file name of an anonymous class declared outside the base path', function(): void {
     $throwable = anonymousThrowableUnder($this->installRoot . '/shared', ANONYMOUS_RUNTIME, 'lib/jan@example.com.php');
 
