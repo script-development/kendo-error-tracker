@@ -132,6 +132,8 @@ Free-text PII that isn't a fixed secret shape — a name, address, or care-data 
 
 Each stack frame's absolute path has the app's own `base_path()` stripped (an **exact** prefix removal, mirroring `laravel/nightwatch`'s `Location::normalizeFile()`). The same exception thrown from `/var/www/html/app/Foo.php` and `/home/forge/app/Foo.php` normalizes to the identical `app/Foo.php`, so kendo fingerprints it once regardless of deploy root.
 
+An anonymous exception class is named after the file that declares it (`Parent@anonymous\0/abs/path/Foo.php:LINE$N`). `exception_class` drops the `$N` compile counter and strips `base_path()` from that file; any other declaration file (outside `base_path()` — vendor code on a shared mount, a symlinked release directory — or a stream-wrapper URI such as `phar://`) is reduced to its basename, `Parent@anonymous\0[REDACTED:path]/Foo.php:LINE`. Two anonymous classes with the same file name and line outside the app root therefore share a fingerprint. Stack frames outside `base_path()` are not reduced this way: they keep their absolute path, with only the `/home/<user>/` and `/Users/<user>/` username redacted.
+
 ## Dispatch modes
 
 - **Async (default):** `report()` dispatches `ReportErrorJob` to the queue. The job has **0 retries** — a failed POST logs to the local PHP `error_log` and is never requeued, so error tracking never amplifies load during an outage.

@@ -6,8 +6,11 @@ namespace ScriptDevelopment\KendoErrorTracker;
 
 use const DIRECTORY_SEPARATOR;
 
+use function mb_strlen;
+use function mb_substr;
 use function preg_replace;
 use function str_replace;
+use function str_starts_with;
 
 /**
  * Strips the app's own base path from every absolute path in a stack trace.
@@ -60,5 +63,14 @@ final readonly class PathNormalizer
         $trace = (string) preg_replace(self::HOME_USERNAME, '/home/[REDACTED:user]/', $trace);
 
         return (string) preg_replace(self::MAC_USERNAME, '/Users/[REDACTED:user]/', $trace);
+    }
+
+    /**
+     * The path relative to the base path, or null when the path does not
+     * start with the base-path prefix.
+     */
+    public function relativize(string $path): ?string
+    {
+        return str_starts_with($path, $this->prefix) ? mb_substr($path, mb_strlen($this->prefix)) : null;
     }
 }

@@ -17,6 +17,11 @@ use function error_log;
 use function is_numeric;
 use function is_scalar;
 use function mb_rtrim;
+use function mb_strlen;
+use function mb_strpos;
+use function mb_substr;
+use function preg_match;
+use function preg_replace;
 use function sprintf;
 
 /**
@@ -37,6 +42,8 @@ use function sprintf;
  */
 final readonly class ErrorTracker
 {
+    private const string ANONYMOUS = "@anonymous\0";
+
     public function __construct(
         private HttpFactory $http,
         private Container $container,
@@ -136,7 +143,7 @@ final readonly class ErrorTracker
         $payload = [
             'environment' => $this->configString('environment'),
             'release' => $release === null ? null : $this->configString('release'),
-            'exception_class' => $throwable::class,
+            'exception_class' => $this->exceptionClass($throwable),
             'message' => $message,
             'stack_trace' => $stackTrace,
         ];
@@ -144,6 +151,38 @@ final readonly class ErrorTracker
         // KD-0771 marks `release` nullable; drop it when unset so the payload
         // matches `{environment, release?, exception_class, message, stack_trace}`.
         return array_filter($payload, static fn(mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * The reported class name. A named class is sent verbatim. An anonymous
+     * class name (`Parent@anonymous\0/abs/path/file.php:LINE$N`) embeds the
+     * consumer's absolute install path and `$N`, PHP's process-global compile
+     * counter; both would leak the path and split one fingerprint per deploy
+     * (KD-0771 D6, WR-0798). The counter is dropped. A declaration file under
+     * the base path is sent relative to it; any other file (outside the base
+     * path, or a stream-wrapper URI such as `phar://`) keeps only its basename,
+     * so no install path leaves and the value is install-location independent.
+     * A name that does not parse is cut to `Parent@anonymous`.
+     */
+    private function exceptionClass(Throwable $throwable): string
+    {
+        $class = $throwable::class;
+        $marker = mb_strpos($class, self::ANONYMOUS);
+
+        if ($marker === false) {
+            return $class;
+        }
+
+        $parent = mb_substr($class, 0, $marker) . '@anonymous';
+
+        if (preg_match('/\A(.*):(\d+)(?:\$[0-9a-f]+)?\z/s', mb_substr($class, $marker + mb_strlen(self::ANONYMOUS)), $location) !== 1) {
+            return $parent;
+        }
+
+        $file = $this->pathNormalizer->relativize($location[1])
+            ?? '[REDACTED:path]/' . (string) preg_replace('#\A.*[/\\\]#s', '', $location[1]);
+
+        return $this->scrubber->scrub(sprintf("%s\0%s:%s", $parent, $file, $location[2]));
     }
 
     /**
@@ -181,7 +220,7 @@ final readonly class ErrorTracker
         $sqlState = isset($errorInfo[0]) && is_scalar($errorInfo[0]) ? (string) $errorInfo[0] : 'unknown';
         $driverCode = isset($errorInfo[1]) && is_scalar($errorInfo[1]) ? (string) $errorInfo[1] : 'unknown';
 
-        return sprintf('%s [SQLSTATE %s] [driver code %s]', $throwable::class, $sqlState, $driverCode);
+        return sprintf('%s [SQLSTATE %s] [driver code %s]', $this->exceptionClass($throwable), $sqlState, $driverCode);
     }
 
     /**
