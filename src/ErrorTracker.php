@@ -17,9 +17,12 @@ use function error_log;
 use function is_numeric;
 use function is_scalar;
 use function mb_rtrim;
+use function mb_strlen;
+use function mb_strpos;
+use function mb_substr;
+use function preg_match;
 use function preg_replace;
 use function sprintf;
-use function str_contains;
 
 /**
  * The public client surface: report a Throwable into kendo's error tracker.
@@ -39,6 +42,8 @@ use function str_contains;
  */
 final readonly class ErrorTracker
 {
+    private const string ANONYMOUS = "@anonymous\0";
+
     public function __construct(
         private HttpFactory $http,
         private Container $container,
@@ -153,20 +158,34 @@ final readonly class ErrorTracker
      * class name (`Parent@anonymous\0/abs/path/file.php:LINE$N`) embeds the
      * consumer's absolute install path and `$N`, PHP's process-global compile
      * counter; both would leak the path and split one fingerprint per deploy
-     * (KD-0771 D6, WR-0798). The counter is dropped and the declaration
-     * location takes the same PathNormalizer + Scrubber passes as the trace.
+     * (KD-0771 D6, WR-0798). The counter is dropped and the declaration file
+     * takes the PathNormalizer pass. A file still absolute after it (declared
+     * outside the base path) keeps only its basename, so no absolute path
+     * leaves and the value is install-location independent. A name that does
+     * not parse is cut to `Parent@anonymous`.
      */
     private function exceptionClass(Throwable $throwable): string
     {
         $class = $throwable::class;
+        $marker = mb_strpos($class, self::ANONYMOUS);
 
-        if (!str_contains($class, "@anonymous\0")) {
+        if ($marker === false) {
             return $class;
         }
 
-        $class = (string) preg_replace('/\$[0-9a-f]+$/', '', $class);
+        $parent = mb_substr($class, 0, $marker) . '@anonymous';
 
-        return $this->scrubber->scrub($this->pathNormalizer->normalize($class));
+        if (preg_match('/\A(.*):(\d+)(?:\$[0-9a-f]+)?\z/s', mb_substr($class, $marker + mb_strlen(self::ANONYMOUS)), $location) !== 1) {
+            return $parent;
+        }
+
+        $file = $this->pathNormalizer->normalize($location[1]);
+
+        if (preg_match('#\A(?:[/\\\]|[A-Za-z]:[/\\\])#', $file) === 1) {
+            $file = '[REDACTED:path]/' . (string) preg_replace('#\A.*[/\\\]#s', '', $file);
+        }
+
+        return $this->scrubber->scrub(sprintf("%s\0%s:%s", $parent, $file, $location[2]));
     }
 
     /**

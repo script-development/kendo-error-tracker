@@ -28,15 +28,15 @@ afterEach(function(): void {
 });
 
 /**
- * Write `$source` to `<root>/app/Failure.php`, require it, and return the
- * Throwable it builds, so the anonymous class is declared under `$root`.
+ * Write `$source` to `<root>/<file>`, require it, and return the Throwable it
+ * builds, so the anonymous class is declared under `$root`.
  */
-function anonymousThrowableUnder(string $root, string $source): Throwable
+function anonymousThrowableUnder(string $root, string $source, string $file = 'app/Failure.php'): Throwable
 {
-    @mkdir($root . '/app', 0o777, true);
-    file_put_contents($root . '/app/Failure.php', $source);
+    @mkdir(\dirname($root . '/' . $file), 0o777, true);
+    file_put_contents($root . '/' . $file, $source);
 
-    return require $root . '/app/Failure.php';
+    return require $root . '/' . $file;
 }
 
 /**
@@ -101,8 +101,48 @@ it('keeps the install path out of a database carrier message built from an anony
         ->and($body['exception_class'])->toBe("PDOException@anonymous\0app/Failure.php:2");
 });
 
-it('scrubs a secret in an anonymous class path that sits outside the base path', function(): void {
-    $throwable = anonymousThrowableUnder($this->installRoot . '/shared-jan@example.com', ANONYMOUS_RUNTIME);
+it('drops the directory of an anonymous class declared outside the base path', function(): void {
+    $throwable = anonymousThrowableUnder(
+        $this->installRoot . '/opt/shared/releases/20260925',
+        ANONYMOUS_RUNTIME,
+        'vendor/acme/lib/src/Failure.php',
+    );
+
+    $body = reportedBodyUnder($this->installRoot . '/current', $throwable);
+
+    expect($body['exception_class'])
+        ->toBe("RuntimeException@anonymous\0[REDACTED:path]/Failure.php:2")
+        ->not->toContain(sys_get_temp_dir());
+});
+
+it('reports the same out-of-base anonymous exception class under two different install roots', function(): void {
+    $classes = array_map(
+        fn(string $root): mixed => reportedBodyUnder(
+            $root . '/current',
+            anonymousThrowableUnder($root . '/shared', ANONYMOUS_RUNTIME, 'lib/Failure.php'),
+        )['exception_class'],
+        [$this->installRoot . '/a', $this->installRoot . '/b'],
+    );
+
+    expect($classes[0])->toBe($classes[1]);
+});
+
+it('keeps an out-of-base install path out of a database carrier message built from an anonymous PDOException', function(): void {
+    $throwable = anonymousThrowableUnder(
+        $this->installRoot . '/opt/shared',
+        "<?php\nreturn new class('insert into users (name) values (Jan)') extends PDOException {};\n",
+        'lib/Failure.php',
+    );
+
+    $body = reportedBodyUnder($this->installRoot . '/current', $throwable);
+
+    expect($body['message'])
+        ->toBe("PDOException@anonymous\0[REDACTED:path]/Failure.php:2 [SQLSTATE unknown] [driver code unknown]")
+        ->not->toContain(sys_get_temp_dir());
+});
+
+it('scrubs a secret in the file name of an anonymous class declared outside the base path', function(): void {
+    $throwable = anonymousThrowableUnder($this->installRoot . '/shared', ANONYMOUS_RUNTIME, 'lib/jan@example.com.php');
 
     $body = reportedBodyUnder($this->installRoot . '/current', $throwable);
 
