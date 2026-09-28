@@ -146,6 +146,29 @@ it('redacts a DSN password regardless of scheme', function(): void {
         ->not->toContain('hunter2');
 });
 
+it('redacts a DSN password when the username is empty', function(): void {
+    $out = $this->scrubber->scrub('redis://:hunter2@localhost:6379/0');
+
+    expect($out)
+        ->toBe('redis://:[REDACTED:dsn-password]@localhost:6379/0')
+        ->not->toContain('hunter2');
+});
+
+it('redacts a DSN password when the username is empty and the host is an IP', function(): void {
+    $out = $this->scrubber->scrub('connection failed: redis://:hunter2@172.17.0.5:6379/0');
+
+    expect($out)
+        ->toContain('redis://:[REDACTED:dsn-password]@')
+        ->toContain('[REDACTED:ip]')
+        ->not->toContain('hunter2');
+});
+
+it('leaves a URL with an empty host and a port untouched when an @ follows the path', function(): void {
+    $url = 'request to http://:8080/path?email=a@b.c failed';
+
+    expect($this->scrubber->scrub($url))->toBe($url);
+});
+
 it('redacts a Stripe-style live API key', function(): void {
     // Deliberately low-entropy placeholder (not a real key shape) so this
     // fixture doesn't trip secret-scanning push protection on the repo.
