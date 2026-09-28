@@ -66,13 +66,14 @@ final class Scrubber
     private const string BEARER = '/Bearer[ \t]+([A-Za-z0-9._~+-]+=*)/i';
 
     /**
-     * DSN userinfo: `scheme://user:pass@`. Only the password (group 2) is
-     * redacted — the scheme and username carry little on their own, and
-     * keeping them intact keeps the scrubbed string legible. This is the
-     * general URI-userinfo shape, not a fixed list of DB scheme names, so it
-     * also catches non-DB DSNs that embed the same credential shape.
+     * DSN userinfo: `scheme://user:pass@`, where the username may be empty
+     * (`redis://:pass@host`, the canonical Redis form). Only the password
+     * (group 2) is redacted — the scheme and username carry little on their
+     * own, and keeping them intact keeps the scrubbed string legible. This is
+     * the general URI-userinfo shape, not a fixed list of DB scheme names, so
+     * it also catches non-DB DSNs that embed the same credential shape.
      */
-    private const string DSN_PASSWORD = '/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^:\/?#\s@]+:)([^@\/?#\s]+)(@)/';
+    private const string DSN_PASSWORD = '/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^:\/?#\s@]*:)([^@\/?#\s]+)(@)/';
 
     /** Stripe-style live secret key prefix. */
     private const string API_KEY_STRIPE = '/\bsk_live_[A-Za-z0-9]{10,}\b/';
