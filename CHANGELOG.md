@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-10-01
+
 ### Added
 
 - **API-key prefix and IPv4 scrubbing (KD-0887).** The Scrubber now redacts Stripe-style `sk_live_...` keys, AWS `AKIA...` access key IDs, and IPv4 addresses, in addition to the existing JWT / Bearer / BSN / email coverage.
