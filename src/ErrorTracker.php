@@ -8,24 +8,34 @@ use const PHP_VERSION;
 
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository as Config;
+use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\Queue\Job;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use PDOException;
 use ScriptDevelopment\KendoErrorTracker\Jobs\ReportErrorJob;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 use function array_filter;
 use function count;
 use function error_log;
 use function ini_get;
+use function is_int;
 use function is_numeric;
+use function is_object;
 use function is_scalar;
+use function is_string;
+use function mb_ltrim;
 use function mb_rtrim;
 use function mb_strlen;
 use function mb_strpos;
 use function mb_substr;
 use function memory_get_peak_usage;
+use function method_exists;
 use function preg_match;
 use function preg_replace;
 use function sprintf;
@@ -66,6 +76,7 @@ final readonly class ErrorTracker
         private Scrubber $scrubber,
         private PathNormalizer $pathNormalizer,
         private Config $config,
+        private RunningContext $running = new RunningContext,
     ) {}
 
     /**
@@ -165,6 +176,7 @@ final readonly class ErrorTracker
             'framework' => $this->optional('framework', fn(): ?array => $this->framework()),
             'memory_peak_bytes' => $this->optional('memory_peak_bytes', static fn(): int => memory_get_peak_usage(true)),
             'memory_limit_bytes' => $this->optional('memory_limit_bytes', static fn(): ?int => MemoryLimit::toBytes(ini_get('memory_limit'))),
+            'context' => $this->optional('context', fn(): ?array => $this->context($throwable)),
         ];
 
         return array_filter($payload, static fn(mixed $value): bool => $value !== null);
@@ -246,11 +258,117 @@ final readonly class ErrorTracker
     }
 
     /**
+     * Where the exception ran, as one kind: the job it failed or the job still
+     * running, else the current route, else the running console command.
+     * Null outside all three.
+     *
+     * @return array<string, int|string>|null
+     */
+    private function context(Throwable $throwable): ?array
+    {
+        $job = $this->running->job($throwable);
+
+        if ($job instanceof Job) {
+            return $this->contextOf('job', [
+                'name' => static fn(): mixed => $job->resolveName(),
+                'queue' => static fn(): mixed => $job->getQueue(),
+                'attempt' => static fn(): mixed => $job->attempts() >= 1 ? $job->attempts() : null,
+            ]);
+        }
+
+        $request = $this->container->make('request');
+        $route = $request instanceof Request ? $request->route() : null;
+
+        if ($request instanceof Request && $route instanceof Route) {
+            return $this->contextOf('route', [
+                'name' => static fn(): mixed => $route->getName(),
+                'method' => static fn(): mixed => $request->getMethod(),
+                'pattern' => static fn(): mixed => '/' . mb_ltrim($route->uri(), '/'),
+                'action' => static fn(): mixed => $route->getAction('controller'),
+                'response_status' => static fn(): mixed => self::responseStatus($throwable),
+            ]);
+        }
+
+        $command = $this->running->command();
+
+        if ($command !== null) {
+            return $this->contextOf('command', [
+                'name' => static fn(): string => $command,
+                'class' => fn(): ?string => $this->commandClass($command),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Read each field of one context kind through optional(). A field that
+     * cannot be read, or reads as anything but a non-empty string or an int,
+     * is left out; the context is still sent. A string is scrubbed and cut,
+     * never path-normalized: a route pattern such as `/home/{user}/` is not a
+     * path.
+     *
+     * @param array<string, callable(): mixed> $reads
+     *
+     * @return array<string, int|string>
+     */
+    private function contextOf(string $kind, array $reads): array
+    {
+        $context = ['kind' => $kind];
+
+        foreach ($reads as $field => $read) {
+            $value = $this->optional('context.' . $field, $read);
+
+            if (is_string($value) && $value !== '') {
+                $context[$field] = $this->short($value);
+            } elseif (is_int($value)) {
+                $context[$field] = $value;
+            }
+        }
+
+        return $context;
+    }
+
+    /**
+     * The status an HTTP exception carries. Any other throwable has none, and
+     * none is guessed: a status outside 100-599 would get the report a 422.
+     */
+    private static function responseStatus(Throwable $throwable): ?int
+    {
+        if (!$throwable instanceof HttpExceptionInterface) {
+            return null;
+        }
+
+        $status = $throwable->getStatusCode();
+
+        return $status >= 100 && $status <= 599 ? $status : null;
+    }
+
+    /**
+     * The class registered under the command name, loading that one command.
+     */
+    private function commandClass(string $name): ?string
+    {
+        $kernel = $this->container->make(ConsoleKernel::class);
+        $command = method_exists($kernel, 'findCommand') ? $kernel->findCommand($name) : ($kernel->all()[$name] ?? null);
+
+        return is_object($command) ? $command::class : null;
+    }
+
+    /**
      * Path-normalize, scrub and cut a short string field.
      */
     private function clean(string $value, int $limit): string
     {
         return mb_substr($this->scrubber->scrub($this->pathNormalizer->normalize($value)), 0, $limit);
+    }
+
+    /**
+     * Scrub and cut a short string that is not a path.
+     */
+    private function short(string $value): string
+    {
+        return mb_substr($this->scrubber->scrub($value), 0, self::MAX_CLASS);
     }
 
     /**

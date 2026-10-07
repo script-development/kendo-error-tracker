@@ -18,7 +18,7 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 - **Route:** `POST {kendo_url}/api/projects/{project}/error-events`.
 - **`{project}` route-key:** the project **id** (no `getRouteKeyName` override on the kendo `Project` model).
 - **Auth:** Bearer — a kendo project token carrying the `error-events:write` ability.
-- **Body:** `{environment, release?, exception_class, message, stack_trace, previous_exceptions?, exception_code?, runtime?, framework?, memory_peak_bytes?, memory_limit_bytes?}` (KD-1934's fields, documented in kendo's `site/docs/api/error-events.md`). `previous_exceptions` is a list of `{exception_class, message, stack_trace}`, at most 10, each entry within 255 / 65,535 / 131,072 characters, or the whole event gets 422. Unknown keys are stripped server-side; no request/user/context fields.
+- **Body:** `{environment, release?, exception_class, message, stack_trace, previous_exceptions?, exception_code?, runtime?, framework?, memory_peak_bytes?, memory_limit_bytes?, context?}` (KD-1934's and KD-1935's fields, documented in kendo's `site/docs/api/error-events.md`). `previous_exceptions` is a list of `{exception_class, message, stack_trace}`, at most 10, each entry within 255 / 65,535 / 131,072 characters, or the whole event gets 422. `context` is `{kind: route|job|command, name?, …}` with the fields of its kind; kendo drops the whole `context` when a route `pattern` looks like a URL. Unknown keys are stripped server-side; no request body, header, URL or user fields.
 - **Success:** `202 Accepted`, empty body. The client treats only `202` as success.
 - **Failures:** `401` (no/invalid token), `403` (token lacks the ability), `422` (token not linked to the route's project, or revoked), `5xx`, timeout, unreachable — all swallowed.
 
@@ -31,7 +31,8 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 | `MemoryLimit` | Parses a `memory_limit` ini value (`128M`, `2G`, plain bytes) into bytes; `-1` and anything unparsable give null. |
 | `PathNormalizer` | Exact `base_path()` prefix strip of every frame (mirrors `laravel/nightwatch`'s `Location::normalizeFile()`). |
 | `Jobs\ReportErrorJob` | Async carrier for the already-scrubbed payload. `$tries = 1` (0 retries); `failed()` logs to `error_log`, never requeues. |
-| `ErrorTrackerServiceProvider` | Auto-discovered. Merges + publishes config; binds `ErrorTracker` + `PathNormalizer` (wired to the app's `base_path()`). |
+| `RunningContext` | The jobs and console commands in flight, fed by the provider's queue and command listeners. A job that threw is kept against its exception (Laravel reports it after the job ended); the outermost console command lives as long as the process. |
+| `ErrorTrackerServiceProvider` | Auto-discovered. Merges + publishes config; binds `ErrorTracker`, `PathNormalizer` (wired to the app's `base_path()`) and `RunningContext`, and listens for the job and command events. |
 
 **Swallow-on-failure is the load-bearing invariant.** `report()` is called from inside the consumer's exception handler — it must never throw and never block. Every path (payload build, dispatch, HTTP send) is wrapped; failures go to `error_log`.
 
@@ -57,4 +58,4 @@ SemVer. Pre-1.0 (`0.x`): minor bumps are treated as breaking (Composer's `^0.x` 
 
 ## Out of scope
 
-Client-side coalescing/debounce (server owns dedup + rate limit), per-project custom scrub rules (v1.5), a framework-agnostic core (Laravel-only), a JS/TS client (v1.5+), Sentry shim, context fields (schema-banned), phone numbers / session IDs as scrub patterns (no shape distinct enough to redact without a high false-positive rate), a `RequestException` message-body carrier-strip (raised as a "consider" in the KD-0887 discussion, referencing the war-room Nightwatch-egress recon — no concrete shape/threshold was specified, so it's deferred pending that follow-up rather than guessed at here).
+Client-side coalescing/debounce (server owns dedup + rate limit), per-project custom scrub rules (v1.5), a framework-agnostic core (Laravel-only), a JS/TS client (v1.5+), Sentry shim, phone numbers / session IDs as scrub patterns (no shape distinct enough to redact without a high false-positive rate), a `RequestException` message-body carrier-strip (raised as a "consider" in the KD-0887 discussion, referencing the war-room Nightwatch-egress recon — no concrete shape/threshold was specified, so it's deferred pending that follow-up rather than guessed at here).
