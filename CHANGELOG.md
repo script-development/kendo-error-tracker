@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Caused-by chain, exception code, runtime and memory (KD-1938).** A report now carries `previous_exceptions` (the `getPrevious()` chain, outermost cause first, at most 10), `exception_code`, `runtime` (`php` and its version), `framework` (`laravel` and the app's version), `memory_peak_bytes` and `memory_limit_bytes`, with the field names of kendo's error-events API. Every cause is scrubbed, path-normalized and database carrier-stripped like the thrown exception, and cut to the server's limits so one oversized cause cannot get the whole report rejected. A field the client cannot read is left out; the report is still sent.
+
 ## [0.1.2] — 2026-10-01
 
 ### Added

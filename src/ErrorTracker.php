@@ -4,22 +4,28 @@ declare(strict_types = 1);
 
 namespace ScriptDevelopment\KendoErrorTracker;
 
+use const PHP_VERSION;
+
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use PDOException;
 use ScriptDevelopment\KendoErrorTracker\Jobs\ReportErrorJob;
 use Throwable;
 
 use function array_filter;
+use function count;
 use function error_log;
+use function ini_get;
 use function is_numeric;
 use function is_scalar;
 use function mb_rtrim;
 use function mb_strlen;
 use function mb_strpos;
 use function mb_substr;
+use function memory_get_peak_usage;
 use function preg_match;
 use function preg_replace;
 use function sprintf;
@@ -43,6 +49,16 @@ use function sprintf;
 final readonly class ErrorTracker
 {
     private const string ANONYMOUS = "@anonymous\0";
+
+    /** The server answers 422 to an 11th `previous_exceptions` entry. */
+    private const int MAX_PREVIOUS = 10;
+
+    /** The server's limits on a string field, in characters. */
+    private const int MAX_CLASS = 255;
+
+    private const int MAX_MESSAGE = 65_535;
+
+    private const int MAX_STACK_TRACE = 131_072;
 
     public function __construct(
         private HttpFactory $http,
@@ -126,31 +142,115 @@ final readonly class ErrorTracker
     }
 
     /**
-     * Build the scrubbed, path-normalized payload matching KD-0771's accepted
-     * body: {environment, release?, exception_class, message, stack_trace}.
+     * Build the scrubbed, path-normalized payload in the shape of kendo's
+     * error-events body. The required four keys come from the thrown
+     * exception; every optional key is read through optional(), so a key that
+     * cannot be read is left out and the rest is still sent. Nulls are dropped.
      *
      * @return array<string, mixed>
      */
     private function buildPayload(Throwable $throwable): array
     {
-        $message = $this->scrubber->scrub($this->safeMessage($throwable));
-        $stackTrace = $this->scrubber->scrub(
-            $this->pathNormalizer->normalize($throwable->getTraceAsString()),
-        );
-
         $release = $this->config->get('error-tracker.release');
 
         $payload = [
             'environment' => $this->configString('environment'),
             'release' => $release === null ? null : $this->configString('release'),
             'exception_class' => $this->exceptionClass($throwable),
-            'message' => $message,
-            'stack_trace' => $stackTrace,
+            'message' => $this->message($throwable),
+            'stack_trace' => $this->stackTrace($throwable),
+            'previous_exceptions' => $this->optional('previous_exceptions', fn(): ?array => $this->previousExceptions($throwable)),
+            'exception_code' => $this->optional('exception_code', fn(): string => $this->exceptionCode($throwable)),
+            'runtime' => $this->optional('runtime', fn(): array => ['name' => 'php', 'version' => $this->clean(PHP_VERSION, self::MAX_CLASS)]),
+            'framework' => $this->optional('framework', fn(): ?array => $this->framework()),
+            'memory_peak_bytes' => $this->optional('memory_peak_bytes', static fn(): int => memory_get_peak_usage(true)),
+            'memory_limit_bytes' => $this->optional('memory_limit_bytes', static fn(): ?int => MemoryLimit::toBytes(ini_get('memory_limit'))),
         ];
 
-        // KD-0771 marks `release` nullable; drop it when unset so the payload
-        // matches `{environment, release?, exception_class, message, stack_trace}`.
         return array_filter($payload, static fn(mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * Read one optional field. A read that throws leaves the field out
+     * (null) instead of losing the whole report. The log line names the
+     * exception class only: its message is unscrubbed free text.
+     *
+     * @template T
+     *
+     * @param callable(): T $read
+     *
+     * @return T|null
+     */
+    private function optional(string $field, callable $read): mixed
+    {
+        try {
+            return $read();
+        } catch (Throwable $e) {
+            error_log(sprintf('[kendo-error-tracker] %s left out: %s', $field, $e::class));
+
+            return null;
+        }
+    }
+
+    private function message(Throwable $throwable): string
+    {
+        return $this->scrubber->scrub($this->safeMessage($throwable));
+    }
+
+    private function stackTrace(Throwable $throwable): string
+    {
+        return $this->scrubber->scrub($this->pathNormalizer->normalize($throwable->getTraceAsString()));
+    }
+
+    /**
+     * The caused-by chain, outermost cause first, through the same pipeline as
+     * the thrown exception. Causes past the tenth are dropped. Each string is
+     * cut to the server's limit after scrubbing: one entry over a limit gets
+     * the whole report a 422, and cutting before scrubbing could halve a
+     * secret so that no pattern matches it.
+     *
+     * @return list<array{exception_class: string, message: string, stack_trace: string}>|null
+     */
+    private function previousExceptions(Throwable $throwable): ?array
+    {
+        $chain = [];
+
+        for ($previous = $throwable->getPrevious(); $previous !== null && count($chain) < self::MAX_PREVIOUS; $previous = $previous->getPrevious()) {
+            $chain[] = [
+                'exception_class' => mb_substr($this->exceptionClass($previous), 0, self::MAX_CLASS),
+                'message' => mb_substr($this->message($previous), 0, self::MAX_MESSAGE),
+                'stack_trace' => mb_substr($this->stackTrace($previous), 0, self::MAX_STACK_TRACE),
+            ];
+        }
+
+        return $chain === [] ? null : $chain;
+    }
+
+    /**
+     * The code as a string: an int for most exceptions, a SQLSTATE string
+     * such as `42S02` for a PDOException.
+     */
+    private function exceptionCode(Throwable $throwable): string
+    {
+        return $this->clean((string) $throwable->getCode(), self::MAX_CLASS);
+    }
+
+    /**
+     * @return array{name: string, version: string}|null
+     */
+    private function framework(): ?array
+    {
+        return $this->container instanceof Application
+            ? ['name' => 'laravel', 'version' => $this->clean($this->container->version(), self::MAX_CLASS)]
+            : null;
+    }
+
+    /**
+     * Path-normalize, scrub and cut a short string field.
+     */
+    private function clean(string $value, int $limit): string
+    {
+        return mb_substr($this->scrubber->scrub($this->pathNormalizer->normalize($value)), 0, $limit);
     }
 
     /**
