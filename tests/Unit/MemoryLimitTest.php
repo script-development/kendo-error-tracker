@@ -1,0 +1,24 @@
+<?php
+
+declare(strict_types = 1);
+
+use ScriptDevelopment\KendoErrorTracker\MemoryLimit;
+
+it('reads a memory_limit value as bytes', function(false|string $value, ?int $bytes): void {
+    expect(MemoryLimit::toBytes($value))->toBe($bytes);
+})->with([
+    'plain bytes' => ['134217728', 134_217_728],
+    'K' => ['512K', 524_288],
+    'M' => ['128M', 134_217_728],
+    'G' => ['2G', 2_147_483_648],
+    'lowercase suffix' => ['256m', 268_435_456],
+    'surrounding space' => [' 64M ', 67_108_864],
+    'zero' => ['0', 0],
+    'unlimited' => ['-1', null],
+    'other negative' => ['-5M', null],
+    'unknown suffix' => ['5T', null],
+    'fraction' => ['1.5G', null],
+    'empty' => ['', null],
+    'unreadable' => [false, null],
+    'past PHP_INT_MAX' => ['99999999999G', null],
+]);

@@ -104,11 +104,29 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
     "release": "v1.2.3",
     "exception_class": "RuntimeException",
     "message": "<scrubbed exception message>",
-    "stack_trace": "<scrubbed, path-normalized stack trace>"
+    "stack_trace": "<scrubbed, path-normalized stack trace>",
+    "previous_exceptions": [
+        {
+            "exception_class": "PDOException",
+            "message": "<scrubbed message of the cause>",
+            "stack_trace": "<scrubbed, path-normalized stack trace of the cause>"
+        }
+    ],
+    "exception_code": "0",
+    "runtime": {"name": "php", "version": "8.5.1"},
+    "framework": {"name": "laravel", "version": "13.1.0"},
+    "memory_peak_bytes": 44040192,
+    "memory_limit_bytes": 268435456
 }
 ```
 
-`environment` reflects the resolved value (your `ERROR_TRACKER_ENVIRONMENT`, else `APP_ENV`, else `production`); `release` is omitted from the body entirely when unset. No request, user, or context fields are sent — the server schema bans them.
+- `environment` reflects the resolved value (your `ERROR_TRACKER_ENVIRONMENT`, else `APP_ENV`, else `production`); `release` is omitted from the body entirely when unset.
+- `previous_exceptions` is the caused-by chain (`getPrevious()`), outermost cause first, at most 10 entries. Each cause goes through the same scrubbing, path normalization and database carrier-strip as the thrown exception. Each cause's message is cut to 65,535 characters and its stack trace to 131,072, the server's limits. The key is left out when the exception has no cause.
+- `exception_code` is the exception's code as a string (`"0"` when none was set, a SQLSTATE such as `"42S02"` for a `PDOException`), scrubbed.
+- `runtime` is PHP and its version; `framework` is Laravel and your app's version.
+- `memory_peak_bytes` is the process's peak memory (`memory_get_peak_usage(true)`); `memory_limit_bytes` is your `memory_limit` in bytes, left out when it is unlimited (`-1`).
+
+A field the client cannot read is left out, and the rest of the report is still sent. No request, user, or route context is sent.
 
 ## Scrubbing
 
