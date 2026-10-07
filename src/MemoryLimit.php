@@ -6,7 +6,6 @@ namespace ScriptDevelopment\KendoErrorTracker;
 
 use const PHP_INT_MAX;
 
-use function intdiv;
 use function mb_strtoupper;
 use function preg_match;
 
@@ -20,7 +19,9 @@ final class MemoryLimit
     /**
      * Bytes for a whole number with an optional K, M or G suffix, as PHP
      * reads it. Null for `-1` (unlimited), for any other negative or
-     * unparsable value, and for a value past PHP_INT_MAX.
+     * unparsable value, and for a value at or past PHP_INT_MAX. The bound is
+     * checked on a float, because an int cast saturates at PHP_INT_MAX and would
+     * pass an overflowing value off as PHP_INT_MAX.
      */
     public static function toBytes(false|string $value): ?int
     {
@@ -28,9 +29,8 @@ final class MemoryLimit
             return null;
         }
 
-        $number = (int) $matches[1];
         $multiplier = self::MULTIPLIERS[mb_strtoupper($matches[2])];
 
-        return $number > intdiv(PHP_INT_MAX, $multiplier) ? null : $number * $multiplier;
+        return (float) $matches[1] * $multiplier >= PHP_INT_MAX ? null : (int) $matches[1] * $multiplier;
     }
 }

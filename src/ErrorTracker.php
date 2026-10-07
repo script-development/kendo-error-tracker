@@ -172,7 +172,8 @@ final readonly class ErrorTracker
 
     /**
      * Read one optional field. A read that throws leaves the field out
-     * (null) instead of losing the whole report.
+     * (null) instead of losing the whole report. The log line names the
+     * exception class only: its message is unscrubbed free text.
      *
      * @template T
      *
@@ -185,7 +186,7 @@ final readonly class ErrorTracker
         try {
             return $read();
         } catch (Throwable $e) {
-            error_log(sprintf('[kendo-error-tracker] %s left out: %s', $field, $e->getMessage()));
+            error_log(sprintf('[kendo-error-tracker] %s left out: %s', $field, $e::class));
 
             return null;
         }

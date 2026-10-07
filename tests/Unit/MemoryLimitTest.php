@@ -20,5 +20,8 @@ it('reads a memory_limit value as bytes', function(false|string $value, ?int $by
     'fraction' => ['1.5G', null],
     'empty' => ['', null],
     'unreadable' => [false, null],
-    'past PHP_INT_MAX' => ['99999999999G', null],
+    'past PHP_INT_MAX with a suffix' => ['99999999999G', null],
+    'past PHP_INT_MAX in plain bytes' => ['99999999999999999999', null],
+    'PHP_INT_MAX in plain bytes' => ['9223372036854775807', null],
+    'largest suffixed value that fits' => ['8589934591G', 9_223_372_035_781_033_984],
 ]);
