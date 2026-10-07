@@ -19,7 +19,7 @@
 
 ## D4 — `memory_limit` is parsed with a strict pattern
 
-**Chosen:** `MemoryLimit::toBytes()` accepts a whole number with an optional K, M or G suffix (any case, surrounding space). `-1`, any other negative, anything else, and a value at or past `PHP_INT_MAX` give null (checked on a float, because an int cast saturates), so the field is left out.
+**Chosen:** `MemoryLimit::toBytes()` accepts a whole number with an optional K, M or G suffix (any case, surrounding space). `-1`, any other negative, anything else, and a value past `PHP_INT_MAX` give null. The digits are read with `FILTER_VALIDATE_INT`, which refuses an overflow, then `intdiv` bounds the suffix; both are exact (an int cast saturates, a float rounds), so the field is left out.
 **Why:** these are the forms `memory_limit` takes in practice, and the parser stays a pure function that emits no warning.
 **Rejected:** PHP's `ini_parse_quantity()`. It also reads hex and octal forms, but it raises `E_WARNING` on a malformed value, which Laravel turns into an `ErrorException` inside the consumer's exception handler.
 

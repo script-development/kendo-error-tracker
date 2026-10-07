@@ -4,8 +4,12 @@ declare(strict_types = 1);
 
 namespace ScriptDevelopment\KendoErrorTracker;
 
+use const FILTER_VALIDATE_INT;
 use const PHP_INT_MAX;
 
+use function filter_var;
+use function intdiv;
+use function mb_ltrim;
 use function mb_strtoupper;
 use function preg_match;
 
@@ -19,9 +23,9 @@ final class MemoryLimit
     /**
      * Bytes for a whole number with an optional K, M or G suffix, as PHP
      * reads it. Null for `-1` (unlimited), for any other negative or
-     * unparsable value, and for a value at or past PHP_INT_MAX. The bound is
-     * checked on a float, because an int cast saturates at PHP_INT_MAX and would
-     * pass an overflowing value off as PHP_INT_MAX.
+     * unparsable value, and for a value past PHP_INT_MAX. The digits are read
+     * with FILTER_VALIDATE_INT, which refuses an overflow, because an int cast
+     * saturates at PHP_INT_MAX and would pass the overflow off as that value.
      */
     public static function toBytes(false|string $value): ?int
     {
@@ -29,8 +33,9 @@ final class MemoryLimit
             return null;
         }
 
+        $number = filter_var(mb_ltrim($matches[1], '0') ?: '0', FILTER_VALIDATE_INT);
         $multiplier = self::MULTIPLIERS[mb_strtoupper($matches[2])];
 
-        return (float) $matches[1] * $multiplier >= PHP_INT_MAX ? null : (int) $matches[1] * $multiplier;
+        return $number === false || $number > intdiv(PHP_INT_MAX, $multiplier) ? null : $number * $multiplier;
     }
 }

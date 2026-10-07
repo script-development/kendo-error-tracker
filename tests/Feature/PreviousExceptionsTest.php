@@ -119,7 +119,7 @@ it('cuts an oversized cause to the server\'s limits so the report is still accep
     // over a limit, and 202 otherwise.
     Http::fake(function(Request $request) {
         foreach (sentChain($request) as $entry) {
-            if (mb_strlen($entry['message']) > 65_535 || mb_strlen($entry['stack_trace']) > 131_072) {
+            if (mb_strlen($entry['exception_class']) > 255 || mb_strlen($entry['message']) > 65_535 || mb_strlen($entry['stack_trace']) > 131_072) {
                 return Http::response('', 422);
             }
         }
@@ -135,7 +135,11 @@ it('cuts an oversized cause to the server\'s limits so the report is still accep
 
     expect(mb_strlen($cause->getTraceAsString()))->toBeGreaterThanOrEqual(200_000);
 
-    app(ErrorTracker::class)->report(new RuntimeException('top', 0, new RuntimeException(str_repeat('x', 100_000), 0, $cause)));
+    require_once __DIR__ . '/../Fixtures/long-class-name.php';
+    $longClass = 'ExceptionWithAClassNameLongerThanTheServerLimitXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+    expect(mb_strlen($longClass))->toBeGreaterThan(255);
+
+    app(ErrorTracker::class)->report(new RuntimeException('top', 0, new $longClass(str_repeat('x', 100_000), 0, $cause)));
 
     $recorded = Http::recorded();
     expect($recorded)->toHaveCount(1);
@@ -144,6 +148,7 @@ it('cuts an oversized cause to the server\'s limits so the report is still accep
     $chain = sentChain($request);
 
     expect($response->status())->toBe(202)
+        ->and($chain[0]['exception_class'])->toBe(mb_substr($longClass, 0, 255))
         ->and(mb_strlen($chain[0]['message']))->toBe(65_535)
         ->and(mb_strlen($chain[1]['stack_trace']))->toBe(131_072);
 });
