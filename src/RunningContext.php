@@ -54,8 +54,9 @@ final class RunningContext
 
     public function jobEnded(Job $job, ?Throwable $exception = null): void
     {
+        // The innermost job keeps it: a sync job's exception bubbles up through the outer job's JobExceptionOccurred.
         if ($exception !== null) {
-            $this->failedJobs[$exception] = $job;
+            $this->failedJobs[$exception] ??= $job;
         }
 
         $this->jobs = array_values(array_filter($this->jobs, static fn(Job $running): bool => $running !== $job));

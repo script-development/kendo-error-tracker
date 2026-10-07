@@ -21,6 +21,7 @@ use ScriptDevelopment\KendoErrorTracker\Tests\Fixtures\FailingJob;
 use ScriptDevelopment\KendoErrorTracker\Tests\Fixtures\NoopCommand;
 use ScriptDevelopment\KendoErrorTracker\Tests\Fixtures\OrderController;
 use ScriptDevelopment\KendoErrorTracker\Tests\Fixtures\ReportingJob;
+use ScriptDevelopment\KendoErrorTracker\Tests\Fixtures\SyncDispatchingJob;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -195,6 +196,19 @@ it('sends the job context with the exception of a queued job, and none after the
     'failed on its last try' => [1],
     'released for a retry' => [3],
 ]);
+
+it('sends the inner sync job, not the queued job its exception bubbled through', function(): void {
+    useDatabaseQueue();
+    Queue::connection('database')->pushOn('reports', new SyncDispatchingJob);
+
+    app('queue.worker')->runNextJob('database', 'reports', new WorkerOptions);
+
+    expect(sentBodies()['job failed']['context'])->toMatchArray([
+        'kind' => 'job',
+        'name' => FailingJob::class,
+        'attempt' => 1,
+    ]);
+});
 
 it('sends the job context for a report made while the job runs', function(): void {
     useDatabaseQueue();

@@ -13,7 +13,7 @@
 
 ## D3 — A failed job is kept against its exception, not as running
 
-**Chosen:** `JobProcessing` pushes the job; `JobProcessed`, `JobExceptionOccurred` and `JobAttempted` remove it. `JobExceptionOccurred` also stores the job in a `WeakMap` keyed by the exception. At report time the exception's own job comes first, then the innermost job still running.
+**Chosen:** `JobProcessing` pushes the job; `JobProcessed`, `JobExceptionOccurred` and `JobAttempted` remove it. `JobExceptionOccurred` also stores the job in a `WeakMap` keyed by the exception, unless a job is stored for it already: a sync job's exception bubbles up through the outer job's `JobExceptionOccurred`, and the innermost job keeps it (D2). At report time the exception's own job comes first, then the innermost job still running.
 **Why:** Laravel's worker reports a job's exception after `JobExceptionOccurred`, the release or the failure, and `JobAttempted` have fired (`Worker::runJob` and `handleJobException`). A context cleared on those events is gone when the job's own report runs; a context kept until the next job leaks onto every report in between. Keying on the exception gives the job's own report its job and any other report none. The `WeakMap` entry dies with the exception. `JobAttempted` fires in a `finally`, so a failer that throws before `JobExceptionOccurred` still clears the job.
 **Rejected:** clearing on `JobProcessing` of the next job (leaks onto reports between jobs), and clearing on `JobFailed` (gone before the report).
 
