@@ -116,7 +116,14 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
     "runtime": {"name": "php", "version": "8.5.1"},
     "framework": {"name": "laravel", "version": "13.1.0"},
     "memory_peak_bytes": 44040192,
-    "memory_limit_bytes": 268435456
+    "memory_limit_bytes": 268435456,
+    "context": {
+        "kind": "route",
+        "name": "orders.show",
+        "method": "GET",
+        "pattern": "/orders/{order}",
+        "action": "App\\Http\\Controllers\\OrderController@show"
+    }
 }
 ```
 
@@ -126,7 +133,14 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
 - `runtime` is PHP and its version; `framework` is Laravel and your app's version.
 - `memory_peak_bytes` is the process's peak memory (`memory_get_peak_usage(true)`); `memory_limit_bytes` is your `memory_limit` in bytes, left out when it is unlimited (`-1`).
 
-A field the client cannot read is left out, and the rest of the report is still sent. No request, user, or route context is sent.
+- `context` says where the exception ran, as one of three kinds:
+  - `route`: the route's `name`, the HTTP `method`, the `pattern` as declared (`/orders/{order}`), the controller `action`, and the `response_status` when the exception carries one (an HTTP exception's status code). The request URL, its query string, its headers and its body are never sent.
+  - `job`: the job class as `name`, its `queue`, and the `attempt` that failed (the first is `1`). A queued job's own exception carries its job, even though Laravel reports it after the job was released or failed; a report made after the job ended carries none.
+  - `command`: the command `name` and the `class` that runs it. A command run from inside another one through `Artisan::call()` counts only while it runs.
+
+  When more than one applies, a running job wins (including a sync-queue job inside a request), then the current route, then the console command. A report from anywhere else carries no `context`. Every context string is scrubbed and cut to 255 characters. It is not path-normalized: a route pattern is not a file path.
+
+A field the client cannot read is left out, and the rest of the report is still sent. No request body, header, URL or user data is sent.
 
 ## Scrubbing
 

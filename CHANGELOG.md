@@ -9,6 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 
 - **Caused-by chain, exception code, runtime and memory (KD-1938).** A report now carries `previous_exceptions` (the `getPrevious()` chain, outermost cause first, at most 10), `exception_code`, `runtime` (`php` and its version), `framework` (`laravel` and the app's version), `memory_peak_bytes` and `memory_limit_bytes`, with the field names of kendo's error-events API. Every cause is scrubbed, path-normalized and database carrier-stripped like the thrown exception, and cut to the server's limits so one oversized cause cannot get the whole report rejected. A field the client cannot read is left out; the report is still sent.
+- **Where the exception ran (KD-1939).** A report now carries a `context` with kendo's field names: a `route` (name, method, the pattern as declared, the controller action, and the response status an HTTP exception carries), a `job` (class, queue, attempt) or a `command` (name, class). The request URL, query string and headers are never sent. A queued job's own exception carries its job although Laravel reports it after the job ended; a later report carries none. A running job wins over the route, and the route over the command. A field the client cannot read is left out; the report is still sent. The package now also requires `illuminate/console` and `illuminate/routing`, which every Laravel app already has.
 
 ## [0.1.2] — 2026-10-01
 
