@@ -160,6 +160,21 @@ A field the client cannot read is left out, and the rest of the report is still 
 - kendo keeps each hash for 90 days after it last saw it, then deletes it.
 - Changing `APP_KEY` changes every hash. A user who hits the error before and after the change counts twice until the old hash expires.
 
+#### Multi-tenant apps
+
+In an app with one database per tenant, user ids restart in each tenant, so user 42 of two tenants would give one hash. kendo would count them as one user and could link their reports. Register a resolver that returns the current tenant key, once, in a service provider's `boot()` (here with stancl/tenancy):
+
+```php
+app(ErrorTracker::class)->scopeUserHashUsing(fn (): int|string|null => tenant()?->getTenantKey());
+```
+
+- The hash then covers the tenant key and the user id together: the same id in two tenants gives two hashes.
+- The tenant key goes into the hash's key and is never sent.
+- The resolver runs only when a hash is sent, at the moment of the report, inside your exception handler. Return the tenant your app already resolved for the request. Do not look it up in a database or a cache: that lookup can be what failed, and a lookup that hangs keeps the request in the handler.
+- When it returns `null`, the hash is the same as without a resolver.
+- When it throws, or returns anything but an integer or a non-empty string, no hash is sent. The report is still sent.
+- Changing a tenant's key changes its users' hashes, as changing `APP_KEY` does.
+
 No other user data is added: not the user's name, not their email address, and no request body, header, cookie or URL. The exception's message and stack trace are sent as your code wrote them, after [Scrubbing](#scrubbing). Scrubbing catches an email address, but not a user id or a name: if your code puts one into an exception message, kendo receives it.
 
 ## Scrubbing

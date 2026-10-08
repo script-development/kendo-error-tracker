@@ -60,7 +60,7 @@ use function sprintf;
  * invariant and masking the original error. Resolving it inside the guard keeps
  * the failure swallowed.
  */
-final readonly class ErrorTracker
+final class ErrorTracker
 {
     private const string ANONYMOUS = "@anonymous\0";
 
@@ -76,16 +76,35 @@ final readonly class ErrorTracker
 
     private const string USER_HASH_KEY = 'kendo-error-tracker:user_hash';
 
+    /** @var (Closure(): mixed)|null */
+    private ?Closure $userHashScope = null;
+
     public function __construct(
-        private HttpFactory $http,
-        private Container $container,
-        private Scrubber $scrubber,
-        private PathNormalizer $pathNormalizer,
-        private Config $config,
-        private RunningContext $running = new RunningContext,
+        private readonly HttpFactory $http,
+        private readonly Container $container,
+        private readonly Scrubber $scrubber,
+        private readonly PathNormalizer $pathNormalizer,
+        private readonly Config $config,
+        private readonly RunningContext $running = new RunningContext,
         /** @var (Closure(): (string|false))|null */
-        private ?Closure $hostname = null,
+        private readonly ?Closure $hostname = null,
     ) {}
+
+    /**
+     * Scope user_hash to the app's tenant: register once, in a service
+     * provider's boot(). The resolver returns the current tenant key, or null
+     * when there is none. It runs at report time, only where a hash is sent,
+     * and the tenant key goes into the hash's key, never into the report.
+     * Return the tenant the app already resolved: the resolver runs inside
+     * exception reporting, where a database or cache lookup can be what
+     * failed, and nothing can cut a call short that never returns.
+     *
+     * @param Closure(): (int|string|null) $resolver
+     */
+    public function scopeUserHashUsing(Closure $resolver): void
+    {
+        $this->userHashScope = $resolver;
+    }
 
     /**
      * Report an exception. Idempotent, swallow-on-failure: never throws, never
@@ -384,9 +403,10 @@ final readonly class ErrorTracker
      * default guard already holds is read: asking a guard that holds none runs
      * a session read or a token lookup inside exception reporting, while the
      * database may be what failed. No key, no user, or an id that is not an
-     * int or a non-empty string sends no hash. buildPayload() asks only for a
-     * route context: a job or a command runs for no signed-in user, and a
-     * queue worker's guard can still hold the user an earlier job set.
+     * int or a non-empty string sends no hash, and the tenant resolver is then
+     * never called. buildPayload() asks only for a route context: a job or a
+     * command runs for no signed-in user, and a queue worker's guard can still
+     * hold the user an earlier job set.
      */
     private function userHash(): ?string
     {
@@ -405,8 +425,32 @@ final readonly class ErrorTracker
         $guard = $auth->guard();
         $id = $guard->hasUser() ? $guard->user()?->getAuthIdentifier() : null;
 
-        return is_int($id) || (is_string($id) && $id !== '')
-            ? hash_hmac('sha256', (string) $id, hash_hmac('sha256', self::USER_HASH_KEY, $key, true))
+        if (!is_int($id) && (!is_string($id) || $id === '')) {
+            return null;
+        }
+
+        $hashKey = $this->userHashKey($key);
+
+        return $hashKey === null ? null : hash_hmac('sha256', (string) $id, $hashKey);
+    }
+
+    /**
+     * The key user_hash is made with. Without a tenant key it is v0.2.0's key,
+     * so a single-tenant app's hashes stay the same. A tenant key goes into the
+     * derivation, so the same id in two tenants gives two hashes. A tenant key
+     * that is not an int or a non-empty string sends no hash: the unscoped key
+     * would merge users who share an id across tenants again.
+     */
+    private function userHashKey(string $appKey): ?string
+    {
+        $scope = $this->userHashScope === null ? null : ($this->userHashScope)();
+
+        if ($scope === null) {
+            return hash_hmac('sha256', self::USER_HASH_KEY, $appKey, true);
+        }
+
+        return is_int($scope) || (is_string($scope) && $scope !== '')
+            ? hash_hmac('sha256', self::USER_HASH_KEY . "\0" . $scope, $appKey, true)
             : null;
     }
 

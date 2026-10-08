@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-10-08
+
+### Fixed
+
+- **Users who share an id across tenants counted as one (KD-1978).** In an app with one database per tenant, ids restart per tenant, so user 42 of two tenants sent the same `user_hash`: kendo counted them as one affected user and could link their reports. An app can now register a resolver once with `app(ErrorTracker::class)->scopeUserHashUsing(fn (): int|string|null => …)` that returns its current tenant key. The tenant key goes into the hash's key, so the same id in two tenants gives two hashes; the tenant key is never sent. Without a resolver, or when it returns `null`, the hash is exactly v0.2.0's, so a single-tenant app's hashes do not change. A resolver that throws, or returns anything but an integer or a non-empty string, sends no hash; the report is still sent. The README's "Multi-tenant apps" section shows the registration.
+
 ## [0.2.0] — 2026-10-08
 
 Upgrade: a `^0.1` constraint does not admit 0.2.0. Require `^0.2`.
