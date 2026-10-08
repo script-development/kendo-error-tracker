@@ -170,7 +170,7 @@ app(ErrorTracker::class)->scopeUserHashUsing(fn (): int|string|null => tenant()?
 
 - The hash then covers the tenant key and the user id together: the same id in two tenants gives two hashes.
 - The tenant key goes into the hash's key and is never sent.
-- The resolver runs only when a hash is sent, at the moment of the report.
+- The resolver runs only when a hash is sent, at the moment of the report, inside your exception handler. Return the tenant your app already resolved for the request. Do not look it up in a database or a cache: that lookup can be what failed, and a lookup that hangs keeps the request in the handler.
 - When it returns `null`, the hash is the same as without a resolver.
 - When it throws, or returns anything but an integer or a non-empty string, no hash is sent. The report is still sent.
 - Changing a tenant's key changes its users' hashes, as changing `APP_KEY` does.

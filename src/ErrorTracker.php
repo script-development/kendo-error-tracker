@@ -95,6 +95,9 @@ final class ErrorTracker
      * provider's boot(). The resolver returns the current tenant key, or null
      * when there is none. It runs at report time, only where a hash is sent,
      * and the tenant key goes into the hash's key, never into the report.
+     * Return the tenant the app already resolved: the resolver runs inside
+     * exception reporting, where a database or cache lookup can be what
+     * failed, and nothing can cut a call short that never returns.
      *
      * @param Closure(): (int|string|null) $resolver
      */
