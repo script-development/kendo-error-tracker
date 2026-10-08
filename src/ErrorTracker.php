@@ -6,6 +6,8 @@ namespace ScriptDevelopment\KendoErrorTracker;
 
 use const PHP_VERSION;
 
+use Closure;
+use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
@@ -23,6 +25,8 @@ use Throwable;
 use function array_filter;
 use function count;
 use function error_log;
+use function gethostname;
+use function hash_hmac;
 use function ini_get;
 use function is_int;
 use function is_numeric;
@@ -77,6 +81,8 @@ final readonly class ErrorTracker
         private PathNormalizer $pathNormalizer,
         private Config $config,
         private RunningContext $running = new RunningContext,
+        /** @var (Closure(): (string|false))|null */
+        private ?Closure $hostname = null,
     ) {}
 
     /**
@@ -163,6 +169,7 @@ final readonly class ErrorTracker
     private function buildPayload(Throwable $throwable): array
     {
         $release = $this->config->get('error-tracker.release');
+        $context = $this->optional('context', fn(): ?array => $this->context($throwable));
 
         $payload = [
             'environment' => $this->configString('environment'),
@@ -176,7 +183,9 @@ final readonly class ErrorTracker
             'framework' => $this->optional('framework', fn(): ?array => $this->framework()),
             'memory_peak_bytes' => $this->optional('memory_peak_bytes', static fn(): int => memory_get_peak_usage(true)),
             'memory_limit_bytes' => $this->optional('memory_limit_bytes', static fn(): ?int => MemoryLimit::toBytes(ini_get('memory_limit'))),
-            'context' => $this->optional('context', fn(): ?array => $this->context($throwable)),
+            'context' => $context,
+            'host' => $this->optional('host', fn(): ?string => $this->host()),
+            'user_hash' => ($context['kind'] ?? null) === 'route' ? $this->optional('user_hash', fn(): ?string => $this->userHash()) : null,
         ];
 
         return array_filter($payload, static fn(mixed $value): bool => $value !== null);
@@ -353,6 +362,46 @@ final readonly class ErrorTracker
         $command = method_exists($kernel, 'findCommand') ? $kernel->findCommand($name) : ($kernel->all()[$name] ?? null);
 
         return is_object($command) ? $command::class : null;
+    }
+
+    /**
+     * The name of the machine that ran the code, scrubbed and cut.
+     */
+    private function host(): ?string
+    {
+        $host = ($this->hostname ?? gethostname(...))();
+
+        return is_string($host) && $host !== '' ? $this->short($host) : null;
+    }
+
+    /**
+     * HMAC-SHA256 of the signed-in user's id, keyed with the app's key, so
+     * kendo can count users without receiving their ids. Only a user the
+     * default guard already holds is read: asking a guard that holds none runs
+     * a session read or a token lookup inside exception reporting, while the
+     * database may be what failed. No key, no user, or an id that is not an
+     * int or a non-empty string sends no hash. buildPayload() asks only for a
+     * route context: a job or a command runs for no signed-in user, and a
+     * queue worker's guard can still hold the user an earlier job set.
+     */
+    private function userHash(): ?string
+    {
+        $key = $this->config->get('app.key');
+
+        if (!is_string($key) || $key === '' || !$this->container->resolved('auth')) {
+            return null;
+        }
+
+        $auth = $this->container->make('auth');
+
+        if (!$auth instanceof AuthFactory || (method_exists($auth, 'hasResolvedGuards') && !$auth->hasResolvedGuards())) {
+            return null;
+        }
+
+        $guard = $auth->guard();
+        $id = $guard->hasUser() ? $guard->user()?->getAuthIdentifier() : null;
+
+        return is_int($id) || (is_string($id) && $id !== '') ? hash_hmac('sha256', (string) $id, $key) : null;
     }
 
     /**
