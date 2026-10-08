@@ -152,7 +152,7 @@ A field the client cannot read is left out, and the rest of the report is still 
 `user_hash` lets kendo count how many different users an error hit, without sending who they are.
 
 - `user_hash` is the HMAC-SHA256 of the signed-in user's id (`getAuthIdentifier()`), written as 64 lowercase hex characters. Its key is derived from your app's `APP_KEY` and used for this field only, so a hash never equals one of Laravel's URL signatures, which use `APP_KEY` itself.
-- The user id is never sent. Your `APP_KEY` never leaves your app, so kendo cannot turn a hash back into an id.
+- The client puts the user id in no field of the report. Your `APP_KEY` never leaves your app, so kendo cannot turn a hash back into an id.
 - The same user gives the same hash on every report, so kendo counts each user once.
 - The hash is sent only for a request whose default guard already holds a signed-in user. A guest request, a job (a sync job inside a request too), a console command, or a report from anywhere else carries no hash.
 - The client never asks a guard to look up a user. Reporting therefore runs no session read and no token query.
@@ -160,7 +160,7 @@ A field the client cannot read is left out, and the rest of the report is still 
 - kendo keeps each hash for 90 days after it last saw it, then deletes it.
 - Changing `APP_KEY` changes every hash. A user who hits the error before and after the change counts twice until the old hash expires.
 
-No other user data is added: not the user's name, not their email address, and no request body, header, cookie or URL. A message or stack trace that names a user is scrubbed as [Scrubbing](#scrubbing) describes. That catches an email address, but not a name.
+No other user data is added: not the user's name, not their email address, and no request body, header, cookie or URL. The exception's message and stack trace are sent as your code wrote them, after [Scrubbing](#scrubbing). Scrubbing catches an email address, but not a user id or a name: if your code puts one into an exception message, kendo receives it.
 
 ## Scrubbing
 
