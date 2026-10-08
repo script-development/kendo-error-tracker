@@ -123,7 +123,9 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
         "method": "GET",
         "pattern": "/orders/{order}",
         "action": "App\\Http\\Controllers\\OrderController@show"
-    }
+    },
+    "host": "web-1",
+    "user_hash": "5f0e8a3c9b1d7e2f4a6c8b0d1e3f5a7c9b2d4e6f8a0c1e3f5b7d9a2c4e6f8b0d"
 }
 ```
 
@@ -140,11 +142,29 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
 
   When more than one applies, a running job wins (including a sync-queue job inside a request), then the current route, then the console command. A report from anywhere else carries no `context`. Every context string is scrubbed and cut to 255 characters. It is not path-normalized: a route pattern is not a file path.
 
-A field the client cannot read is left out, and the rest of the report is still sent. No request body, header, URL or user data is sent.
+- `host` is the name of the machine that ran the code (`gethostname()`), scrubbed and cut to 255 characters. It is left out when PHP cannot read it.
+- `user_hash` stands for the signed-in user. See [Affected users](#affected-users).
+
+A field the client cannot read is left out, and the rest of the report is still sent.
+
+### Affected users
+
+`user_hash` lets kendo count how many different users an error hit, without sending who they are.
+
+- `user_hash` is the HMAC-SHA256 of the signed-in user's id (`getAuthIdentifier()`), keyed with your app's `APP_KEY`, written as 64 lowercase hex characters.
+- The user id is never sent. Your `APP_KEY` never leaves your app, so kendo cannot turn a hash back into an id.
+- The same user gives the same hash on every report, so kendo counts each user once.
+- The hash is sent only for a request whose default guard already holds a signed-in user. A guest request, a job (a sync job inside a request too), a console command, or a report from anywhere else carries no hash.
+- The client never asks a guard to look up a user. Reporting therefore runs no session read and no token query.
+- No hash is sent when `APP_KEY` is not set, or when the user's id is not an integer or a non-empty string.
+- kendo keeps each hash for 90 days after it last saw it, then deletes it.
+- Changing `APP_KEY` changes every hash. A user who hits the error before and after the change counts twice until the old hash expires.
+
+No other user data is added: not the user's name, not their email address, and no request body, header, cookie or URL. A message or stack trace that names a user is scrubbed as [Scrubbing](#scrubbing) describes. That catches an email address, but not a name.
 
 ## Scrubbing
 
-Before send, the message and stack trace are scrubbed of the following patterns (each replaced with a `[REDACTED:<kind>]` marker):
+Before send, the message, the stack trace, the causes, the exception code, the runtime and framework versions, the context and the host are scrubbed of the following patterns (each replaced with a `[REDACTED:<kind>]` marker):
 
 | Pattern | Example |
 |---|---|
