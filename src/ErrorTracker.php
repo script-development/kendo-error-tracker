@@ -74,6 +74,8 @@ final readonly class ErrorTracker
 
     private const int MAX_STACK_TRACE = 131_072;
 
+    private const string USER_HASH_KEY = 'kendo-error-tracker:user_hash';
+
     public function __construct(
         private HttpFactory $http,
         private Container $container,
@@ -375,8 +377,10 @@ final readonly class ErrorTracker
     }
 
     /**
-     * HMAC-SHA256 of the signed-in user's id, keyed with the app's key, so
-     * kendo can count users without receiving their ids. Only a user the
+     * HMAC-SHA256 of the signed-in user's id, keyed with a key derived from
+     * the app's key for this field only, so kendo can count users without
+     * receiving their ids. Laravel signs URLs with the app's key itself; the
+     * derived key keeps a hash from ever equalling a URL signature. Only a user the
      * default guard already holds is read: asking a guard that holds none runs
      * a session read or a token lookup inside exception reporting, while the
      * database may be what failed. No key, no user, or an id that is not an
@@ -401,7 +405,9 @@ final readonly class ErrorTracker
         $guard = $auth->guard();
         $id = $guard->hasUser() ? $guard->user()?->getAuthIdentifier() : null;
 
-        return is_int($id) || (is_string($id) && $id !== '') ? hash_hmac('sha256', (string) $id, $key) : null;
+        return is_int($id) || (is_string($id) && $id !== '')
+            ? hash_hmac('sha256', (string) $id, hash_hmac('sha256', self::USER_HASH_KEY, $key, true))
+            : null;
     }
 
     /**

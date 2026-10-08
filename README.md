@@ -151,7 +151,7 @@ A field the client cannot read is left out, and the rest of the report is still 
 
 `user_hash` lets kendo count how many different users an error hit, without sending who they are.
 
-- `user_hash` is the HMAC-SHA256 of the signed-in user's id (`getAuthIdentifier()`), keyed with your app's `APP_KEY`, written as 64 lowercase hex characters.
+- `user_hash` is the HMAC-SHA256 of the signed-in user's id (`getAuthIdentifier()`), written as 64 lowercase hex characters. Its key is derived from your app's `APP_KEY` and used for this field only, so a hash never equals one of Laravel's URL signatures, which use `APP_KEY` itself.
 - The user id is never sent. Your `APP_KEY` never leaves your app, so kendo cannot turn a hash back into an id.
 - The same user gives the same hash on every report, so kendo counts each user once.
 - The hash is sent only for a request whose default guard already holds a signed-in user. A guest request, a job (a sync job inside a request too), a console command, or a report from anywhere else carries no hash.

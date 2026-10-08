@@ -110,7 +110,8 @@ it('sends HMAC(user id, APP_KEY) for a signed-in user, and never the id', functi
 
     $this->get('/orders/42')->assertStatus(500);
 
-    expect(bodiesSent()['boom']['user_hash'])->toBe(hash_hmac('sha256', (string) $id, APP_KEY))
+    expect(bodiesSent()['boom']['user_hash'])->toBe(hash_hmac('sha256', (string) $id, hash_hmac('sha256', 'kendo-error-tracker:user_hash', APP_KEY, true)))
+        ->not->toBe(hash_hmac('sha256', (string) $id, APP_KEY))
         ->toMatch('/\A[0-9a-f]{64}\z/');
 })->with([
     'string id' => [USER_ID],

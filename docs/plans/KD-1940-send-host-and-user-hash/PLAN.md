@@ -12,13 +12,13 @@ The client sends `host` and `user_hash` with the field names of Kendo's `site/do
 
 ## Approach
 
-1. `src/ErrorTracker.php`: `host()` reads `gethostname()` through `short()`; `userHash()` reads the default guard's user only when `hasUser()`, and hashes its auth identifier with `hash_hmac('sha256', …, config('app.key'))`. `buildPayload()` asks for the hash only beside a `route` context. Both read through `optional()`.
+1. `src/ErrorTracker.php`: `host()` reads `gethostname()` through `short()`; `userHash()` reads the default guard's user only when `hasUser()`, and hashes its auth identifier with a key derived from `config('app.key')` (DECISIONS D4). `buildPayload()` asks for the hash only beside a `route` context. Both read through `optional()`.
 2. `tests/Feature/HostAndUserHashTest.php`.
 3. README "What gets sent" (new "Affected users" subsection) and "Scrubbing"; CHANGELOG `[0.2.0]`; `CLAUDE.md`.
 
 ## Acceptance criteria
 
-- [ ] A signed-in request reports `user_hash` = HMAC-SHA256(id, APP_KEY) as 64 lowercase hex; the raw id appears nowhere in the body.
+- [ ] A signed-in request reports `user_hash` = HMAC-SHA256(id, the key derived from APP_KEY) as 64 lowercase hex; the raw id appears nowhere in the body.
 - [ ] A guard that holds no user is never asked for one (`user()` is not called), and the report carries no hash.
 - [ ] A guest request, a sync job inside a signed-in request, and a report outside a request carry no hash.
 - [ ] No `APP_KEY`, or an id that is not an int or a non-empty string, sends no hash; an id read that throws leaves the hash out, logs the class only, and the report is still sent.

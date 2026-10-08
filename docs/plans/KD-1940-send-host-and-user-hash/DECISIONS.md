@@ -19,8 +19,9 @@
 
 ## D4 — The key and rotation
 
-**Chosen:** `hash_hmac('sha256', (string) $id, config('app.key'))`, with the key string as configured (including a `base64:` prefix). No key, or an empty one, sends no hash. The id must be an int or a non-empty string; any other value sends none.
-**Why:** `APP_KEY` is a secret every Laravel app already holds and never sends (D5). Hashing the configured string needs no decoding. A float, a bool or an object id is not a user id the client can render stably.
+**Chosen:** a key for this field only, derived from the configured `app.key` string (including a `base64:` prefix): `$k = hash_hmac('sha256', 'kendo-error-tracker:user_hash', $appKey, true)`, then `hash_hmac('sha256', (string) $id, $k)` (orchestrator ruling, 2026-10-08). No key, or an empty one, sends no hash. The id must be an int or a non-empty string; any other value sends none.
+**Why:** `APP_KEY` is a secret every Laravel app already holds and never sends (D5); the derived key depends on it alone, so D5 holds. Laravel signs URLs with `hash_hmac('sha256', $url, config('app.key'))`, the same string. Hashing the id with that key directly would make a hash equal the signature of a URL whose text is the id. The derived key ends that overlap. The change is free only before v0.2.0 ships: a later key change makes every user count twice once. A float, a bool or an object id is not a user id the client can render stably.
+**Rejected:** `hash_hmac('sha256', (string) $id, $appKey)`, as first built. The overlap needs a user id that is a valid signed URL of the app, so it is not exploitable in practice, but the derived key removes it for two lines.
 **Note:** rotating `APP_KEY` changes every hash, so a user counts twice within kendo's 90-day window. The README says so.
 
 ## D5 — The host source
