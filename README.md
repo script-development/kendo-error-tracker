@@ -227,7 +227,7 @@ A `202` response is success. Every failure — HTTP timeout, `401` (no/invalid t
 
 ```bash
 composer test          # Pest
-composer test:coverage # Pest with coverage, failing below 95 % (the gate CI runs; needs pcov or Xdebug)
+composer test:coverage # Pest with coverage, failing below 98 % (the gate CI runs; needs pcov or Xdebug)
 composer phpstan       # PHPStan (level max, self-analysis)
 composer format:check  # Pint --test
 composer format        # Pint write
