@@ -6,7 +6,7 @@ Distributable Laravel client library that reports scrubbed exceptions into kendo
 
 - **Language:** PHP 8.4+ (`private const string`, `readonly` classes, first-class callable syntax).
 - **Framework:** Laravel package (`illuminate/* ^11–13`), ServiceProvider auto-registered via `extra.laravel.providers`.
-- **Test:** Pest 3 over Orchestra Testbench (Feature tests boot a Laravel app; Unit tests are pure).
+- **Test:** Pest 4 over Orchestra Testbench (Feature tests boot a Laravel app; Unit tests are pure).
 - **Static analysis:** PHPStan 2.x, level max, self-analysis on `src/`.
 - **Format:** Pint (canonical war-room config).
 - **Publish:** Auto-sync to public packagist.org via repository webhook (push-trigger; versioned releases on tag push via `release.yml`). First-time packagist submission is a manual user step.
@@ -48,6 +48,7 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 | Command | Purpose |
 |---|---|
 | `composer test` | Run the Pest suite |
+| `composer test:coverage` | The Pest suite with coverage, failing below 95 % — the test gate CI and the release workflow run |
 | `composer phpstan` | Self-analysis (level max) on `src/` |
 | `composer format` | Pint write |
 | `composer format:check` | Pint check |
