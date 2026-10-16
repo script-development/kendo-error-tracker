@@ -45,6 +45,7 @@ use function str_replace;
  *   e.g. a `QueryException`'s bound parameters) is not a regex-able secret
  *   shape and is out of scope for this scrubber; see the per-exception-type
  *   carrier-strip in `ErrorTracker::buildPayload()` for that class of leak.
+ * - IPv6 addresses are not redacted.
  * - Phone numbers and session IDs remain out of scope (no shape distinct
  *   enough from other numeric/opaque identifiers to redact without a high
  *   false-positive rate).

@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Argument values sent in the stack trace (WR-1497).** The trace was PHP's `getTraceAsString()`, which prints each frame's argument values unless `zend.exception_ignore_args` is on, and PHP's compiled-in default is off. A name passed as an argument is not a shape the scrubber can match. The trace is now built from `getTrace()` with every argument list empty, whatever the ini says. Where `zend.exception_ignore_args` was already on, the trace is unchanged except that an `include` or `require` frame no longer carries its (cut) file name.
+- **Absolute paths in the message (WR-1499).** The message was scrubbed but not path-normalized, so a filesystem error such as `file_put_contents(/home/forge/…)` sent the OS username. The message, and each cause's message, now goes through the same path normalization as the trace.
+
+### Documentation
+
+- The README lists what is not scrubbed, IPv6 addresses among them (WR-0817).
+
 ## [0.2.1] — 2026-10-08
 
 ### Fixed

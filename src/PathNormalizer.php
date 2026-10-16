@@ -50,8 +50,9 @@ final readonly class PathNormalizer
      * then redact the username segment of any remaining `/home/<user>/` or
      * `/Users/<user>/` path that did not start with the prefix.
      *
-     * `getTraceAsString()` embeds absolute file paths inline (`#3 /abs/app/Foo.php(10): ...`),
-     * so a global replace of the prefix normalizes every frame at once. Paths
+     * The trace embeds absolute file paths inline (`#3 /abs/app/Foo.php(10): ...`),
+     * so a global replace of the prefix normalizes every frame at once; an
+     * exception message is normalized the same way. Paths
      * that do not start with the prefix (vendor under a symlinked store, the
      * trailing `{main}` marker) are left otherwise untouched — exactly
      * nightwatch's "return unchanged when the prefix does not match" behavior
