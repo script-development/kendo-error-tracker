@@ -200,6 +200,7 @@ The stack trace carries each frame's file, line, class and function, and no argu
 ### Not scrubbed
 
 - IPv6 addresses.
+- A DSN password with an unencoded `?` or line break, or one that opens with digits followed by a reserved character or a space (`mysql://u:12/ab@db`), which reads as a port, is not fully redacted.
 - JWTs that do not start with the conventional `eyJ` header, and truncated tokens.
 - Email addresses with a quoted local part containing a space (`"jan de vries"@example.com`).
 - Free-text PII in a message other than a database exception's: a name, an address, a care-data value.

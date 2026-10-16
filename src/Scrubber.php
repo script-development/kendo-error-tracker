@@ -73,8 +73,18 @@ final class Scrubber
      * own, and keeping them intact keeps the scrubbed string legible. This is
      * the general URI-userinfo shape, not a fixed list of DB scheme names, so
      * it also catches non-DB DSNs that embed the same credential shape.
+     *
+     * A hand-written DSN can carry an unencoded `@`, `/`, `#`, space or tab in
+     * its password, so the first alternative takes the password up to the `@`
+     * that starts the host: an `@` belongs to the password only while another
+     * `@` follows before the next `/ ? #` or whitespace. A candidate that opens
+     * with a digit run followed by anything but a word character or `@` is a
+     * port (`host:8443/@user`, `host:8443, ask @ops`), so the first alternative
+     * refuses it, and the second — the strict RFC-3986 password — applies, as
+     * it does to every password the first one does not take. `?` and line
+     * breaks never belong to a password.
      */
-    private const string DSN_PASSWORD = '/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^:\/?#\s@]*:)([^@\/?#\s]+)(@)/';
+    private const string DSN_PASSWORD = '/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^:\/?#\s@]*:)((?!\d+(?![\w@]))(?:[^\s@?]|[ \t]|@(?=[^\s@\/?#]*@))++|[^@\/?#\s]+)(@)/';
 
     /** Stripe-style live secret key prefix. */
     private const string API_KEY_STRIPE = '/\bsk_live_[A-Za-z0-9]{10,}\b/';
