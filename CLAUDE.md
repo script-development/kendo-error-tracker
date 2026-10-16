@@ -48,7 +48,7 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 | Command | Purpose |
 |---|---|
 | `composer test` | Run the Pest suite |
-| `composer test:coverage` | The Pest suite with coverage, failing below 95 % — the test gate CI and the release workflow run |
+| `composer test:coverage` | The Pest suite with coverage, failing below 98 % — the test gate CI and the release workflow run |
 | `composer phpstan` | Self-analysis (level max) on `src/` |
 | `composer format` | Pint write |
 | `composer format:check` | Pint check |

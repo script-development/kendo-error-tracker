@@ -5,7 +5,7 @@
 # a GitHub release pointing at the changelog entry.
 #
 # WR-0796: `coverage: pcov` and `composer test:coverage` are a matched pair.
-# Dropping the script silently removes the --min=95 coverage gate from tagged
+# Dropping the script silently removes the --min=98 coverage gate from tagged
 # builds; dropping the driver fails the job outright ("No code coverage driver
 # is available"). Change both or neither.
 #

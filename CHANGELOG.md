@@ -19,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - The README lists what is not scrubbed, IPv6 addresses among them (WR-0817).
 
+### Tests
+
+- **The queued delivery job now runs in the suite (WR-0799).** Every test faked the bus, so `ReportErrorJob::handle()` and `failed()`, the path every async consumer runs, were never executed. A worker now runs the job off a database queue: it posts the same body as sync mode, the stored job carries no raw secret, rejected and unreachable sends are swallowed and logged, and `failed()` logs without throwing. The coverage gate rises from 95 % to 98 %.
+
 ## [0.2.1] — 2026-10-08
 
 ### Fixed
