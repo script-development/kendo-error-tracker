@@ -66,6 +66,9 @@ final class Scrubber
      */
     private const string BEARER = '/Bearer[ \t]+([A-Za-z0-9._~+-]+=*)/i';
 
+    /** Shortest Bearer credential whose bare reuse elsewhere is also redacted. */
+    private const int BARE_REUSE_MIN_LENGTH = 16;
+
     /**
      * DSN userinfo: `scheme://user:pass@`, where the username may be empty
      * (`redis://:pass@host`, the canonical Redis form). Only the password
@@ -129,7 +132,8 @@ final class Scrubber
      * Redact `Bearer <token>` values, then redact any bare reuse of the same
      * credential value elsewhere in the string (H-2): a credential that appears
      * once prefixed with `Bearer` and again unprefixed (`token=<same>`) would
-     * otherwise leak on the second occurrence.
+     * otherwise leak on the second occurrence. Bare reuse is redacted only for
+     * a credential of at least BARE_REUSE_MIN_LENGTH characters.
      */
     private function scrubBearer(string $value): string
     {
@@ -145,9 +149,13 @@ final class Scrubber
             $value,
         );
 
-        // The credential class requires at least one character, so each capture
-        // is non-empty — a bare str_replace cannot blank-match the whole string.
+        // A short capture (`null`, `test`) is a placeholder, not a secret, and
+        // recurs inside ordinary words; replacing it would corrupt the message.
         foreach ($credentials as $credential) {
+            if (mb_strlen($credential) < self::BARE_REUSE_MIN_LENGTH) {
+                continue;
+            }
+
             $value = str_replace($credential, '[REDACTED:bearer]', $value);
         }
 

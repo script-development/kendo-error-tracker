@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace ScriptDevelopment\KendoErrorTracker;
 
+use const FILTER_VALIDATE_BOOL;
 use const PHP_VERSION;
 
 use Closure;
@@ -25,6 +26,7 @@ use Throwable;
 use function array_filter;
 use function count;
 use function error_log;
+use function filter_var;
 use function gethostname;
 use function hash_hmac;
 use function implode;
@@ -77,6 +79,9 @@ final class ErrorTracker
 
     private const string USER_HASH_KEY = 'kendo-error-tracker:user_hash';
 
+    /** Longest connect or total timeout, in seconds, the config may set. */
+    private const float TIMEOUT_CEILING = 30.0;
+
     /** @var (Closure(): mixed)|null */
     private ?Closure $userHashScope = null;
 
@@ -117,7 +122,7 @@ final class ErrorTracker
         try {
             $payload = $this->buildPayload($throwable);
 
-            if ((bool) $this->config->get('error-tracker.sync', false)) {
+            if (filter_var($this->config->get('error-tracker.sync', false), FILTER_VALIDATE_BOOL)) {
                 $this->send($payload);
 
                 return;
@@ -590,6 +595,10 @@ final class ErrorTracker
      * "wait forever" — a hung kendo host would then block the caller in sync
      * mode, breaking the swallow-on-failure / never-block invariant. A
      * non-positive numeric therefore falls back to the supplied default.
+     *
+     * The value is also capped at TIMEOUT_CEILING seconds: a value given in
+     * milliseconds (`5000`) would otherwise hold a sync-mode request for over
+     * an hour. A value above the ceiling falls back to the default too.
      */
     private function configFloat(string $key, float $default): float
     {
@@ -601,6 +610,6 @@ final class ErrorTracker
 
         $coerced = (float) $value;
 
-        return $coerced > 0.0 ? $coerced : $default;
+        return $coerced > 0.0 && $coerced <= self::TIMEOUT_CEILING ? $coerced : $default;
     }
 }

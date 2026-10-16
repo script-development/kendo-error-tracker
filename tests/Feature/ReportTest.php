@@ -82,6 +82,28 @@ it('posts inline in sync mode and dispatches no job', function(): void {
     Bus::assertNotDispatched(ReportErrorJob::class);
 });
 
+it('reads a false-like sync value from the environment as async', function(mixed $value): void {
+    config()->set('error-tracker.sync', $value);
+    Bus::fake();
+    Http::fake();
+
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
+
+    Bus::assertDispatched(ReportErrorJob::class);
+    Http::assertNothingSent();
+})->with(['off', 'no', 'false', '0', '', 'nonsense', null, false]);
+
+it('reads a true-like sync value from the environment as sync', function(mixed $value): void {
+    config()->set('error-tracker.sync', $value);
+    Bus::fake();
+    Http::fake(['kendo.test/*' => Http::response('', 202)]);
+
+    app(ErrorTracker::class)->report(new RuntimeException('boom'));
+
+    Http::assertSentCount(1);
+    Bus::assertNotDispatched(ReportErrorJob::class);
+})->with(['on', 'yes', 'true', '1', 1, true]);
+
 it('scrubs the message before sending', function(): void {
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
