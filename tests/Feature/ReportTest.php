@@ -100,11 +100,8 @@ it('scrubs the message before sending', function(): void {
 it('scrubs the stack trace before sending', function(): void {
     Http::fake(['kendo.test/*' => Http::response('', 202)]);
 
-    // Capture a real Throwable whose trace string genuinely carries a scrubable
-    // token. getTraceAsString() elides argument values + the message, but embeds
-    // each frame's defining FILE PATH — so the fixture lives at a path containing
-    // an eleven-test-valid BSN token (123456782). See the fixture file for the
-    // rationale.
+    // The sent trace carries each frame's file path and no argument values, so
+    // the fixture lives at a path containing an eleven-test-valid BSN token.
     $throwable = captureThrowableFromTokenBearingPath();
 
     // Guard against a false-green: the token must be present BEFORE scrubbing,

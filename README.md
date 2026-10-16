@@ -195,9 +195,19 @@ BSN candidates are checksum-validated (the eleven-test) before redaction, so an 
 
 Free-text PII that isn't a fixed secret shape — a name, address, or care-data value embedded in a database error message — is not covered by pattern matching. `QueryException` and `PDOException` are instead handled by a per-exception-type carrier-strip: the message is replaced with just the exception class, SQLSTATE, and driver error code, dropping the SQL string and bound parameter values entirely.
 
+The stack trace carries each frame's file, line, class and function, and no argument values, whatever `zend.exception_ignore_args` is set to. An `include` or `require` frame is sent without its file name.
+
+### Not scrubbed
+
+- IPv6 addresses.
+- JWTs that do not start with the conventional `eyJ` header, and truncated tokens.
+- Email addresses with a quoted local part containing a space (`"jan de vries"@example.com`).
+- Free-text PII in a message other than a database exception's: a name, an address, a care-data value.
+- Phone numbers and session IDs.
+
 ## Path normalization
 
-Each stack frame's absolute path has the app's own `base_path()` stripped (an **exact** prefix removal, mirroring `laravel/nightwatch`'s `Location::normalizeFile()`). The same exception thrown from `/var/www/html/app/Foo.php` and `/home/forge/app/Foo.php` normalizes to the identical `app/Foo.php`, so kendo fingerprints it once regardless of deploy root.
+Each stack frame's absolute path, and every absolute path in the message, has the app's own `base_path()` stripped (an **exact** prefix removal, mirroring `laravel/nightwatch`'s `Location::normalizeFile()`). The same exception thrown from `/var/www/html/app/Foo.php` and `/home/forge/app/Foo.php` normalizes to the identical `app/Foo.php`, so kendo fingerprints it once regardless of deploy root.
 
 An anonymous exception class is named after the file that declares it (`Parent@anonymous\0/abs/path/Foo.php:LINE$N`). `exception_class` drops the `$N` compile counter and strips `base_path()` from that file; any other declaration file (outside `base_path()` — vendor code on a shared mount, a symlinked release directory — or a stream-wrapper URI such as `phar://`) is reduced to its basename, `Parent@anonymous\0[REDACTED:path]/Foo.php:LINE`. Two anonymous classes with the same file name and line outside the app root therefore share a fingerprint. Stack frames outside `base_path()` are not reduced this way: they keep their absolute path, with only the `/home/<user>/` and `/Users/<user>/` username redacted.
 

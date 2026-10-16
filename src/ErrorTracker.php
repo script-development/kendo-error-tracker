@@ -27,6 +27,7 @@ use function count;
 use function error_log;
 use function gethostname;
 use function hash_hmac;
+use function implode;
 use function ini_get;
 use function is_int;
 use function is_numeric;
@@ -234,14 +235,43 @@ final class ErrorTracker
         }
     }
 
+    /**
+     * Filesystem, include and permission errors carry absolute paths in the
+     * message (WR-1499), so the message is path-normalized like the trace.
+     */
     private function message(Throwable $throwable): string
     {
-        return $this->scrubber->scrub($this->safeMessage($throwable));
+        return $this->scrubber->scrub($this->pathNormalizer->normalize($this->safeMessage($throwable)));
     }
 
     private function stackTrace(Throwable $throwable): string
     {
-        return $this->scrubber->scrub($this->pathNormalizer->normalize($throwable->getTraceAsString()));
+        return $this->scrubber->scrub($this->pathNormalizer->normalize($this->traceWithoutArguments($throwable)));
+    }
+
+    /**
+     * The trace in getTraceAsString()'s format, with every frame's argument
+     * list left empty. getTraceAsString() prints argument values unless
+     * zend.exception_ignore_args is on, and PHP's compiled-in default is off
+     * (WR-1497); a name passed as an argument is not a shape the scrubber can
+     * match. Where that ini is on, the string is byte-identical to
+     * getTraceAsString().
+     */
+    private function traceWithoutArguments(Throwable $throwable): string
+    {
+        $lines = [];
+
+        foreach ($throwable->getTrace() as $index => $frame) {
+            $location = isset($frame['file'])
+                ? sprintf('%s(%d)', $frame['file'], $frame['line'] ?? 0)
+                : '[internal function]';
+
+            $lines[] = sprintf('#%d %s: %s%s%s()', $index, $location, $frame['class'] ?? '', $frame['type'] ?? '', $frame['function']);
+        }
+
+        $lines[] = sprintf('#%d {main}', count($lines));
+
+        return implode("\n", $lines);
     }
 
     /**

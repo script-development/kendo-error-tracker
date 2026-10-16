@@ -3,10 +3,9 @@
 declare(strict_types = 1);
 
 /*
- * Fixture for the trace-level scrubbing tests. getTraceAsString() elides
- * argument values and the message but embeds each frame's defining FILE PATH,
- * so the scrubable token planted in this file's directory name genuinely
- * appears in the trace string before scrubbing runs.
+ * Fixture for the trace-level scrubbing tests. The client sends no argument
+ * values and no message in a stack trace, but it does send each frame's FILE
+ * PATH, so the scrubable token sits in this file's directory name.
  */
 
 return (static function(): never {
