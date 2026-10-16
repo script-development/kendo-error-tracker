@@ -169,6 +169,37 @@ it('leaves a URL with an empty host and a port untouched when an @ follows the p
     expect($this->scrubber->scrub($url))->toBe($url);
 });
 
+it('redacts the whole of a DSN password that carries an unencoded reserved character', function(string $input, string $expected): void {
+    expect($this->scrubber->scrub($input))->toBe($expected);
+})->with([
+    'an @ in the password' => ['redis://:p@ssw0rd@cache:6379', 'redis://:[REDACTED:dsn-password]@cache:6379'],
+    'two @ in the password' => ['redis://u:a@b@c@cache:6379', 'redis://u:[REDACTED:dsn-password]@cache:6379'],
+    'a / in the password' => ['mysql://u:pa/ss@db/app', 'mysql://u:[REDACTED:dsn-password]@db/app'],
+    'a # in the password' => ['mysql://u:pa#ss@db/app', 'mysql://u:[REDACTED:dsn-password]@db/app'],
+    'a space in the password' => ['mysql://u:pa ss@db/app', 'mysql://u:[REDACTED:dsn-password]@db/app'],
+    'a password that starts with digits' => ['mysql://u:123!x@db/app', 'mysql://u:[REDACTED:dsn-password]@db/app'],
+]);
+
+it('ends a DSN password at the @ that starts the host', function(string $input, string $expected): void {
+    expect($this->scrubber->scrub($input))->toBe($expected);
+})->with([
+    'an @ later in the path' => ['mysql://u:pw@db/app/a@b', 'mysql://u:[REDACTED:dsn-password]@db/app/a@b'],
+    'an email after a space' => ['mysql://u:pw@db failed for ops@x.nl', 'mysql://u:[REDACTED:dsn-password]@db failed for [REDACTED:email]'],
+    'an email in the query' => ['mysql://u:pw@db/app?to=ops@x.nl', 'mysql://u:[REDACTED:dsn-password]@db/app?to=[REDACTED:email]'],
+    'a host and path' => ['https://u:tok@github.com/org/repo.git', 'https://u:[REDACTED:dsn-password]@github.com/org/repo.git'],
+]);
+
+it('leaves a URL without a password untouched when an @ follows', function(string $input): void {
+    expect($this->scrubber->scrub($input))->toBe($input);
+})->with([
+    'a port and an @ in the path' => ['see https://example.com:8443/@user/post'],
+    'a port and an @ in the fragment' => ['see https://example.com:8443#@user'],
+    'a port, a space and an @ later' => ['https://example.com:8443 is down, ask @ops'],
+    'a port, a comma and an @ later' => ['https://example.com:8443, ask @ops'],
+    'an @ in the path without a port' => ['see https://example.com/@user/post'],
+    'a named port and an @ in the query' => ['see svc://cache:redis?owner=@ops'],
+]);
+
 it('redacts a Stripe-style live API key', function(): void {
     // Deliberately low-entropy placeholder (not a real key shape) so this
     // fixture doesn't trip secret-scanning push protection on the repo.
@@ -246,11 +277,28 @@ it('documents the eyJ-header JWT scope boundary', function(): void {
 it('redacts bare reuse of a Bearer credential elsewhere in the string', function(): void {
     // H-2: the same credential appearing once prefixed with `Bearer` and again
     // unprefixed must be redacted in BOTH places.
-    $out = $this->scrubber->scrub('Bearer abc123DEF456 then token=abc123DEF456 reused');
+    $out = $this->scrubber->scrub('Bearer abc123DEF456ghi789 then token=abc123DEF456ghi789 reused');
 
     expect($out)
-        ->not->toContain('abc123DEF456')
+        ->not->toContain('abc123DEF456ghi789')
         ->and(mb_substr_count($out, '[REDACTED:bearer]'))->toBe(2);
+});
+
+it('leaves other text intact when a short Bearer credential recurs in it', function(string $input, string $expected): void {
+    expect($this->scrubber->scrub($input))->toBe($expected);
+})->with([
+    'null' => ['Bearer null; the user is null', '[REDACTED:bearer]; the user is null'],
+    'test' => [
+        'Bearer test in App\Tests\TestCase->testThing() at latest',
+        '[REDACTED:bearer] in App\Tests\TestCase->testThing() at latest',
+    ],
+    'one character' => ['Bearer a and a marker', '[REDACTED:bearer] and a marker'],
+    'fifteen characters' => ['Bearer abcdefghijklmno then abcdefghijklmno', '[REDACTED:bearer] then abcdefghijklmno'],
+]);
+
+it('redacts bare reuse of a Bearer credential from sixteen characters', function(): void {
+    expect($this->scrubber->scrub('Bearer abcdefghijklmnop then abcdefghijklmnop'))
+        ->toBe('[REDACTED:bearer] then [REDACTED:bearer]');
 });
 
 it('does not consume a URL path after a stray Bearer keyword', function(): void {

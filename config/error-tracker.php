@@ -71,7 +71,8 @@ return [
     |
     | When false (default) reports dispatch to the queue via ReportErrorJob.
     | When true the HTTP POST happens inline in the request that reported. Both
-    | modes swallow every failure.
+    | modes swallow every failure. `true`, `on`, `yes` and `1` turn sync on;
+    | any other value, `off` and `no` included, leaves it off.
     |
      */
 
@@ -84,6 +85,7 @@ return [
     |
     | Seconds to wait while establishing the connection to the kendo host. Kept
     | short — this is fire-and-forget telemetry that must never block a request.
+    | A value that is not above 0 and at most 30 falls back to the default.
     |
      */
 
@@ -95,7 +97,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Total seconds to wait for the POST to complete (connect + transfer). Bounds
-    | the call so a hung kendo host cannot stall the caller.
+    | the call so a hung kendo host cannot stall the caller. A value that is not
+    | above 0 and at most 30 falls back to the default.
     |
      */
 

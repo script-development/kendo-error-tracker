@@ -144,3 +144,27 @@ it('falls back to the default for a non-numeric timeout', function(): void {
     expect($captured->connectTimeout)->toBe(2.0)
         ->and($captured->timeout)->toBe(5.0);
 });
+
+it('applies a timeout at the thirty-second ceiling unchanged', function(): void {
+    ['tracker' => $tracker, 'captured' => $captured] = trackerCapturingTimeouts([
+        'error-tracker.connect_timeout' => 30,
+        'error-tracker.timeout' => '30',
+    ]);
+
+    $tracker->report(new RuntimeException('boom'));
+
+    expect($captured->connectTimeout)->toBe(30.0)
+        ->and($captured->timeout)->toBe(30.0);
+});
+
+it('falls back to the default for a timeout above the ceiling', function(): void {
+    ['tracker' => $tracker, 'captured' => $captured] = trackerCapturingTimeouts([
+        'error-tracker.connect_timeout' => 30.5,
+        'error-tracker.timeout' => '5000',
+    ]);
+
+    $tracker->report(new RuntimeException('boom'));
+
+    expect($captured->connectTimeout)->toBe(2.0)
+        ->and($captured->timeout)->toBe(5.0);
+});

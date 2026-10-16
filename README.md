@@ -34,9 +34,9 @@ Set the environment variables (the config reads `ERROR_TRACKER_*`). Only the fir
 | `ERROR_TRACKER_TOKEN` | `token` | **Required** | A kendo project token carrying the `error-events:write` ability (Bearer). |
 | `ERROR_TRACKER_ENVIRONMENT` | `environment` | Optional | Deploy environment label. May be omitted — falls back to `APP_ENV`, then `production`. Only set it to override that derived default. |
 | `ERROR_TRACKER_RELEASE` | `release` | Optional | Release identifier (git sha / version tag). May be omitted — when unset it is dropped from the payload entirely. |
-| `ERROR_TRACKER_SYNC` | `sync` | Optional | `false` (default) queues the report; `true` POSTs inline. |
-| `ERROR_TRACKER_CONNECT_TIMEOUT` | `connect_timeout` | Optional | Seconds to wait while connecting to the kendo host (default `2`). |
-| `ERROR_TRACKER_TIMEOUT` | `timeout` | Optional | Total seconds to wait for the POST (default `5`); bounds the call so a hung host never blocks the caller. |
+| `ERROR_TRACKER_SYNC` | `sync` | Optional | `false` (default) queues the report; `true` POSTs inline. `on`, `yes` and `1` also POST inline; any other value, `off` and `no` included, queues. |
+| `ERROR_TRACKER_CONNECT_TIMEOUT` | `connect_timeout` | Optional | Seconds to wait while connecting to the kendo host (default `2`). A value that is not above 0 and at most 30 falls back to the default. |
+| `ERROR_TRACKER_TIMEOUT` | `timeout` | Optional | Total seconds to wait for the POST (default `5`); bounds the call so a hung host never blocks the caller. A value that is not above 0 and at most 30 falls back to the default. |
 
 Minimal working config — just the three required vars:
 
@@ -200,6 +200,7 @@ The stack trace carries each frame's file, line, class and function, and no argu
 ### Not scrubbed
 
 - IPv6 addresses.
+- A DSN password with an unencoded `?` or line break, or one that opens with digits followed by a reserved character or a space (`mysql://u:12/ab@db`), which reads as a port, is not fully redacted.
 - JWTs that do not start with the conventional `eyJ` header, and truncated tokens.
 - Email addresses with a quoted local part containing a space (`"jan de vries"@example.com`).
 - Free-text PII in a message other than a database exception's: a name, an address, a care-data value.
@@ -226,6 +227,7 @@ A `202` response is success. Every failure — HTTP timeout, `401` (no/invalid t
 
 ```bash
 composer test          # Pest
+composer test:coverage # Pest with coverage, failing below 95 % (the gate CI runs; needs pcov or Xdebug)
 composer phpstan       # PHPStan (level max, self-analysis)
 composer format:check  # Pint --test
 composer format        # Pint write
