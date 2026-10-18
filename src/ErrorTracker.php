@@ -204,6 +204,7 @@ final class ErrorTracker
             'exception_class' => $this->exceptionClass($throwable),
             'message' => $this->message($throwable),
             'stack_trace' => $this->stackTrace($throwable),
+            'location' => $this->optional('location', fn(): ?array => $this->location($throwable)),
             'previous_exceptions' => $this->optional('previous_exceptions', fn(): ?array => $this->previousExceptions($throwable)),
             'exception_code' => $this->optional('exception_code', fn(): string => $this->exceptionCode($throwable)),
             'runtime' => $this->optional('runtime', fn(): array => ['name' => 'php', 'version' => $this->clean(PHP_VERSION, self::MAX_CLASS)]),
@@ -310,6 +311,27 @@ final class ErrorTracker
     private function exceptionCode(Throwable $throwable): string
     {
         return $this->clean((string) $throwable->getCode(), self::MAX_CLASS);
+    }
+
+    /**
+     * Where the throwable was raised, with the trace's path normalization.
+     * Sent for every exception: kendo reads it only when the trace holds no
+     * frame, as a fatal error's does. PHP reports some fatals at line 0, and
+     * kendo answers 422 to a line below 1, which would lose the report, so
+     * such a location is left out.
+     *
+     * @return array{file: string, line: int}|null
+     */
+    private function location(Throwable $throwable): ?array
+    {
+        $file = $throwable->getFile();
+        $line = $throwable->getLine();
+
+        if ($file === '' || $line < 1) {
+            return null;
+        }
+
+        return ['file' => $this->clean($file, self::MAX_CLASS), 'line' => $line];
     }
 
     /**
