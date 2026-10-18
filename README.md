@@ -105,6 +105,7 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
     "exception_class": "RuntimeException",
     "message": "<scrubbed exception message>",
     "stack_trace": "<scrubbed, path-normalized stack trace>",
+    "location": {"file": "app/Services/OrderService.php", "line": 42},
     "previous_exceptions": [
         {
             "exception_class": "PDOException",
@@ -130,6 +131,7 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
 ```
 
 - `environment` reflects the resolved value (your `ERROR_TRACKER_ENVIRONMENT`, else `APP_ENV`, else `production`); `release` is omitted from the body entirely when unset.
+- `location` is where the exception was raised: `getFile()` and `getLine()`. The file goes through the same path normalization and scrubbing as the trace and is cut to 255 characters. Kendo reads it only when the stack trace holds no frame, as a fatal error's does, and then groups the event by exception class and this file. The key is left out when PHP gives no file or a line below 1.
 - `previous_exceptions` is the caused-by chain (`getPrevious()`), outermost cause first, at most 10 entries. Each cause goes through the same scrubbing, path normalization and database carrier-strip as the thrown exception. Each cause's message is cut to 65,535 characters and its stack trace to 131,072, the server's limits. The key is left out when the exception has no cause.
 - `exception_code` is the exception's code as a string (`"0"` when none was set, a SQLSTATE such as `"42S02"` for a `PDOException`), scrubbed.
 - `runtime` is PHP and its version; `framework` is Laravel and your app's version.
