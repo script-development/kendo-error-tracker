@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Where the exception was raised (KD-1873).** A report now carries `location`, the throwable's `getFile()` and `getLine()`. The file goes through the same path normalization and scrubbing as the trace and is cut to 255 characters. A fatal error's stack trace holds no frame but `{main}`, so kendo grouped every fatal error of one class together and showed `at {main}`. Once kendo ships KD-2205, it groups such an event by its exception class and this file, and shows the file and line. Other exceptions group as before. When PHP gives no file or a line below 1, as it does for some fatal errors, the key is left out and the report is still sent.
+
 ### Fixed
 
 - **Argument values sent in the stack trace (WR-1497).** The trace was PHP's `getTraceAsString()`, which prints each frame's argument values unless `zend.exception_ignore_args` is on, and PHP's compiled-in default is off. A name passed as an argument is not a shape the scrubber can match. The trace is now built from `getTrace()` with every argument list empty, whatever the ini says. Where `zend.exception_ignore_args` was already on, the trace is unchanged except that an `include` or `require` frame no longer carries its (cut) file name.
