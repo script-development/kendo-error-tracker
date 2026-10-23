@@ -62,6 +62,8 @@ use function sprintf;
  * resolve() time — outside report()'s try/catch — defeating the never-throw
  * invariant and masking the original error. Resolving it inside the guard keeps
  * the failure swallowed.
+ *
+ * @api Public API: consumers may use it. A change to it is a breaking change.
  */
 final class ErrorTracker
 {
@@ -85,6 +87,12 @@ final class ErrorTracker
     /** @var (Closure(): mixed)|null */
     private ?Closure $userHashScope = null;
 
+    /**
+     * Resolve the tracker from the container; the constructor may change in
+     * any release.
+     *
+     * @internal
+     */
     public function __construct(
         private readonly HttpFactory $http,
         private readonly Container $container,
@@ -145,6 +153,11 @@ final class ErrorTracker
      * short-circuited with a distinct operator-facing log line and no POST is
      * attempted.
      *
+     * ReportErrorJob calls it. Report through report(), or dispatch
+     * ReportErrorJob.
+     *
+     * @internal
+     *
      * @param array<string, mixed> $payload
      */
     public function send(array $payload): void
@@ -190,6 +203,10 @@ final class ErrorTracker
      * error-events body. The required four keys come from the thrown
      * exception; every optional key is read through optional(), so a key that
      * cannot be read is left out and the rest is still sent. Nulls are dropped.
+     * The class and the trace are cut to the server's limits after scrubbing,
+     * as each cause's are (KD-1938 D3): kendo answers 422 to either one over
+     * its limit, and the report would be lost. The message is not cut: kendo
+     * accepts any length and cuts it when it stores it.
      *
      * @return array<string, mixed>
      */
@@ -201,9 +218,9 @@ final class ErrorTracker
         $payload = [
             'environment' => $this->configString('environment'),
             'release' => $release === null ? null : $this->configString('release'),
-            'exception_class' => $this->exceptionClass($throwable),
+            'exception_class' => mb_substr($this->exceptionClass($throwable), 0, self::MAX_CLASS),
             'message' => $this->message($throwable),
-            'stack_trace' => $this->stackTrace($throwable),
+            'stack_trace' => mb_substr($this->stackTrace($throwable), 0, self::MAX_STACK_TRACE),
             'location' => $this->optional('location', fn(): ?array => $this->location($throwable)),
             'previous_exceptions' => $this->optional('previous_exceptions', fn(): ?array => $this->previousExceptions($throwable)),
             'exception_code' => $this->optional('exception_code', fn(): string => $this->exceptionCode($throwable)),

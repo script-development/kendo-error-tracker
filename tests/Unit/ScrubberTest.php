@@ -321,3 +321,71 @@ it('does not let a Bearer match span a newline', function(): void {
         ->toBe($input)
         ->not->toContain('[REDACTED:bearer]');
 });
+
+it('redacts the whole of a Bearer credential that carries a pipe or a slash', function(string $input, string $expected): void {
+    expect($this->scrubber->scrub($input))->toBe($expected);
+})->with([
+    'a Sanctum id|secret token' => [
+        'Authorization: Bearer 12|FAKEfakeFAKEfakeFAKEfakeFAKEfakeFAKEfake rejected',
+        'Authorization: [REDACTED:bearer] rejected',
+    ],
+    'a slash inside the credential' => ['Bearer abc/DEF123ghi+jkl= rejected', '[REDACTED:bearer] rejected'],
+]);
+
+it('documents that a Bearer keyword in front of a relative path redacts the path', function(): void {
+    // Boundary: the credential may not start with `/` (an absolute path after
+    // a stray Bearer stays intact), but a relative path reads as a credential.
+    expect($this->scrubber->scrub('route Bearer users/123/edit failed'))->toBe('route [REDACTED:bearer] failed');
+});
+
+it('redacts a credential in a query string or a key=value pair', function(string $input, string $expected): void {
+    expect($this->scrubber->scrub($input))->toBe($expected);
+})->with([
+    'a query-string auth key' => [
+        'cURL error 28: Operation timed out for https://api.pro6pp.nl/v2/autocomplete/nl?authKey=FAKEfakeFAKEfake&postalCode=1234AB',
+        'cURL error 28: Operation timed out for https://api.pro6pp.nl/v2/autocomplete/nl?authKey=[REDACTED:secret]&postalCode=1234AB',
+    ],
+    'a bare key parameter' => [
+        'GET https://maps.example.com/geocode?address=Dam&key=AIzaFAKEfakeFAKEfake failed',
+        'GET https://maps.example.com/geocode?address=Dam&key=[REDACTED:secret] failed',
+    ],
+    'password=' => ['login failed with password=hunter2 for the job', 'login failed with password=[REDACTED:secret] for the job'],
+    'api_key=' => ['https://x.test/v1?api_key=FAKE123&page=2', 'https://x.test/v1?api_key=[REDACTED:secret]&page=2'],
+    'an underscore-prefixed password' => ['DB_PASSWORD=s3cr3t not accepted', 'DB_PASSWORD=[REDACTED:secret] not accepted'],
+    'an OAuth token and signature' => [
+        '?oauth_token=FAKEtok&oauth_signature=FAKEsig',
+        '?oauth_token=[REDACTED:secret]&oauth_signature=[REDACTED:secret]',
+    ],
+    'an id token' => ['id_token=FAKEidtoken', 'id_token=[REDACTED:secret]'],
+    'an x api key' => ['x_api_key=FAKExkey', 'x_api_key=[REDACTED:secret]'],
+    'a private key' => ['private_key=FAKEpk', 'private_key=[REDACTED:secret]'],
+    'a prefixed secret' => ['stripe_secret=FAKEss', 'stripe_secret=[REDACTED:secret]'],
+    'any case' => ['?ApiKey=FAKE1&Token=FAKE2', '?ApiKey=[REDACTED:secret]&Token=[REDACTED:secret]'],
+]);
+
+it('leaves key= prose and other parameters intact', function(string $input): void {
+    expect($this->scrubber->scrub($input))->toBe($input);
+})->with([
+    'a foreign key' => ['Cannot add or update a child row: a foreign key=fk_orders_user fails'],
+    'a duplicate entry' => ["Duplicate entry '42' for key=PRIMARY"],
+    'a route key' => ['No query results for route key=slug'],
+    'a Redis key' => ['WRONGTYPE Operation against Redis key=queues:default'],
+    'an undefined array key' => ['Undefined array key=name in Foo.php'],
+    'a cache key' => ['cache-key=users.42 missing'],
+    'a lookup key' => ['lookup-key=postcode failed'],
+    'an ordinary query string' => ['GET https://x.test/search?q=amsterdam&page=2&sort=name failed'],
+    'a token count' => ['max_tokens=4096 exceeded'],
+]);
+
+it('does not re-redact a value another pattern already redacted', function(): void {
+    expect($this->scrubber->scrub('token=[REDACTED:bearer] then password=[REDACTED:dsn-password]'))
+        ->toBe('token=[REDACTED:bearer] then password=[REDACTED:dsn-password]');
+});
+
+it('documents that punctuation after a key=value credential is redacted with it', function(): void {
+    // Boundary: the value runs to the next `&`, whitespace, `#` or quote, so a
+    // password holding `,`, `)` or `;` is redacted whole, and punctuation that
+    // follows it in prose goes too.
+    expect($this->scrubber->scrub('(token=abc) failed, password=x;y retry'))
+        ->toBe('(token=[REDACTED:secret] failed, password=[REDACTED:secret] retry');
+});
