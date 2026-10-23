@@ -12,6 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **An oversized class name or stack trace lost the report (WR-2511).** The thrown exception's `exception_class` and `stack_trace` were sent uncut, while kendo answers 422 to a class over 255 characters or a trace over 131,072, and the client swallows the 422. Both are now cut to those limits after scrubbing, as each cause's already were (KD-1938 D3, amended). The message is still sent whole: kendo accepts any length and cuts it when it stores it.
+- **Credentials in a query string or a `name=value` pair were sent (WR-2511).** A transport error from Guzzle 7 carries the request URL, query string included, so `?authKey=…`, `&key=…` or `api_key=…` reached kendo verbatim. The value after a parameter whose name ends in `password`, `secret`, `token`, `api_key`, `auth_key`, `private_key`, `signature` or a similar word, any prefix included (`DB_PASSWORD=`, `oauth_token=`), and after a bare `key` parameter of a query string, is now redacted as `[REDACTED:secret]`. Prose such as `foreign key=` or `Undefined array key=` is left alone, and a value another pattern already redacted is not matched again. JSON, header and URL-encoded forms are not covered; the README lists them.
+- **A Sanctum token kept its secret (WR-2511).** The Bearer pattern stopped at `|` and `/`, so `Bearer 12|<secret>` sent the secret. A Bearer credential may now hold `|` and `/`, though not start with `/`, so `Bearer /api/v1/users/123` still keeps its path.
 - **Argument values sent in the stack trace (WR-1497).** The trace was PHP's `getTraceAsString()`, which prints each frame's argument values unless `zend.exception_ignore_args` is on, and PHP's compiled-in default is off. A name passed as an argument is not a shape the scrubber can match. The trace is now built from `getTrace()` with every argument list empty, whatever the ini says. Where `zend.exception_ignore_args` was already on, the trace is unchanged except that an `include` or `require` frame no longer carries its (cut) file name.
 - **Absolute paths in the message (WR-1499).** The message was scrubbed but not path-normalized, so a filesystem error such as `file_put_contents(/home/forge/…)` sent the OS username. The message, and each cause's message, now goes through the same path normalization as the trace.
 - **DSN passwords with an unencoded `@`, `/`, `#` or space.** The scrubber ended a DSN password at the first `@`, `/`, `#` or space, so `redis://:p@ssw0rd@cache` sent `ssw0rd` and `mysql://u:pa/ss@db` sent the whole password. The password now runs to the `@` that starts the host. A URL with a port and an `@` later in its path, fragment or text is left as it was.
@@ -21,10 +24,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Documentation
 
-- The README lists what is not scrubbed, IPv6 addresses among them (WR-0817).
+- The README lists what is not scrubbed, IPv6 addresses among them (WR-0817), and now also IBANs, BSNs in other groupings, dates, phone numbers, URL-encoded email addresses and the credential forms the new pattern does not cover (WR-2511).
+- **The token docs named an ability kendo deleted (WR-2511).** Kendo replaced token abilities with access levels on 2026-10-05 (KD-1876/1877). The README, `CLAUDE.md` and the config now ask for a **Read & write** project token, minted from a dedicated account, because the token can read the project as its creator (KD-1908). The failure table follows kendo's current status codes: a token linked to another project now gets `403`, not `422`.
+- **The public API is declared (WR-2511).** Every class is marked `@api` or `@internal`, and the README lists the public surface: `ErrorTracker::report()` and `scopeUserHashUsing()`, `Scrubber`, `PathNormalizer`'s constructor and `normalize()`, and `ReportErrorJob`'s constructor and payload. `tests/Unit/PublicApiTest.php` pins their signatures, so a change that would break a consumer such as lokalekeuze's own reporter reds the suite.
 
 ### Tests
 
+- **The `location` file scrub is pinned (WR-2511).** Removing the scrub left every test green; a test now reports from a path holding an email address and checks it is redacted.
 - **The queued delivery job now runs in the suite (WR-0799).** Every test faked the bus, so `ReportErrorJob::handle()` and `failed()`, the path every async consumer runs, were never executed. A worker now runs the job off a database queue: it posts the same body as sync mode, the stored job carries no raw secret, rejected and unreachable sends are swallowed and logged, and `failed()` logs without throwing. The coverage gate rises from 95 % to 98 %.
 
 ## [0.2.1] — 2026-10-08

@@ -33,8 +33,10 @@ return [
     | Token
     |--------------------------------------------------------------------------
     |
-    | A kendo project token carrying the "error-events:write" ability. Sent as
-    | a Bearer token. Mint it from the kendo project's API-token settings.
+    | A kendo project token with the "Read & write" access level. Sent as a
+    | Bearer token. Mint it from the project's API Tokens settings while signed
+    | in as a dedicated account: the token can read the whole project as the
+    | account that created it (see the README).
     |
      */
 

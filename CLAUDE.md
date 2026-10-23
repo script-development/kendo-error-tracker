@@ -17,17 +17,17 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 
 - **Route:** `POST {kendo_url}/api/projects/{project}/error-events`.
 - **`{project}` route-key:** the project **id** (no `getRouteKeyName` override on the kendo `Project` model).
-- **Auth:** Bearer — a kendo project token carrying the `error-events:write` ability.
+- **Auth:** Bearer — a kendo project token with the **Read & write** access level (kendo KD-1876/1877 replaced the `error-events:write` ability with access levels on 2026-10-05). The token acts as its creator and can read the whole project (KD-1908), so the README tells operators to mint it from a dedicated account.
 - **Body:** `{environment, release?, exception_class, message, stack_trace, location?, previous_exceptions?, exception_code?, runtime?, framework?, memory_peak_bytes?, memory_limit_bytes?, context?, host?, user_hash?}` (KD-1934's, KD-1935's, KD-1936's and KD-2205's fields, documented in kendo's `site/docs/api/error-events.md`). `location` is `{file, line}`: a file of at most 255 characters and an integer line of at least 1, both required, or the whole event gets 422; the client leaves it out when PHP gives no file or a line below 1. `previous_exceptions` is a list of `{exception_class, message, stack_trace}`, at most 10, each entry within 255 / 65,535 / 131,072 characters, or the whole event gets 422. `context` is `{kind: route|job|command, name?, …}` with the fields of its kind; kendo drops the whole `context` when a route `pattern` looks like a URL. `host` is at most 255 characters. `user_hash` is HMAC-SHA256 of the user's id, keyed with `hash_hmac('sha256', 'kendo-error-tracker:user_hash', APP_KEY, true)`, as 64 lowercase hex characters; kendo silently drops any other shape and still answers 202. When the app registered a tenant resolver with `scopeUserHashUsing()` and it returns a key, the derivation's message is `'kendo-error-tracker:user_hash' . "\0" . <tenant key>` instead; a resolver that throws, or returns anything but `null`, an int or a non-empty string, sends no hash. The tenant key is never sent. Unknown keys are stripped server-side; no field carries a request body, header, URL or user id.
 - **Success:** `202 Accepted`, empty body. The client treats only `202` as success.
-- **Failures:** `401` (no/invalid token), `403` (token lacks the ability), `422` (token not linked to the route's project, or revoked), `5xx`, timeout, unreachable — all swallowed.
+- **Failures:** `401` (missing, invalid, revoked or expired token), `403` (a Read token, a token linked to another project, or the Error Tracking feature off), `422` (validation), `429` (rate limit), `5xx`, timeout, unreachable — all swallowed.
 
 ## Architecture
 
 | Class | Responsibility |
 |---|---|
 | `ErrorTracker` | Public surface. `report(\Throwable)`: builds the scrubbed/normalized payload synchronously, then sends inline (sync) or dispatches `ReportErrorJob` (async). Any `\PDOException` (including Laravel's `QueryException`, which extends it) gets a carrier-strip first — the message becomes `class [SQLSTATE x] [driver code y]`, dropping the SQL string and bound parameter values before the Scrubber even runs. `send(array)`: the HTTP POST, swallow-on-failure. Reads config live from the `Config` repository. |
-| `Scrubber` | Redacts JWT / Bearer / DSN password / API-key prefix / IPv4 / BSN (eleven-test validated) / email from a string. |
+| `Scrubber` | Redacts JWT / Bearer / DSN password / query-string or `name=value` credential / API-key prefix / IPv4 / BSN (eleven-test validated) / email from a string. |
 | `MemoryLimit` | Parses a `memory_limit` ini value (`128M`, `2G`, plain bytes) into bytes; `-1` and anything unparsable give null. |
 | `PathNormalizer` | Exact `base_path()` prefix strip of every frame (mirrors `laravel/nightwatch`'s `Location::normalizeFile()`). |
 | `Jobs\ReportErrorJob` | Async carrier for the already-scrubbed payload. `$tries = 1` (0 retries); `failed()` logs to `error_log`, never requeues. |
@@ -41,6 +41,7 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 ## Conventions
 
 - **Namespace:** `ScriptDevelopment\KendoErrorTracker\` (PSR-4, `src/`).
+- **Public API:** every class in `src/` is marked `@api` or `@internal`, and `tests/Unit/PublicApiTest.php` pins the public signatures (lokalekeuze builds its own reporter on `Scrubber`, `PathNormalizer` and `ReportErrorJob`). A change that reds that test is a breaking change; the README's Public API section lists the surface.
 - **Config keys live in `config/error-tracker.php`** with `ERROR_TRACKER_*` env defaults. No `territory` key — the destination project is named in the route and bound to the token (KD-0771 D1/D2).
 
 ## Commands
