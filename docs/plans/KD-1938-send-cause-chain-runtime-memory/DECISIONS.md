@@ -16,6 +16,7 @@
 **Chosen:** a cause's class, message and trace are cut to 255, 65,535 and 131,072 characters, after the scrubber ran. The thrown exception's own message and trace keep today's behaviour (no cut).
 **Why:** one oversized entry answers 422 and the whole report is lost. Cutting after the scrubber means no secret is halved before the patterns look at it; a `[REDACTED:…]` marker cut at the end is harmless. The class name is cut too: an anonymous class name carries a file path and can pass 255.
 **Rejected:** cutting before scrubbing. A JWT or a BSN cut in half no longer matches its pattern and would be sent.
+**Amended (WR-2511, 2026-10-23):** the thrown exception's own `exception_class` and `stack_trace` are now cut too, to 255 and 131,072 characters, after scrubbing. Keeping them uncut lost the report the same way: a 307-character class and traces of 299,000 to 886,000 characters were measured going out, and kendo answers 422 to either field over its limit. The top-level `message` stays uncut, because kendo accepts a message of any length and cuts it when it stores it.
 
 ## D4 — `memory_limit` is parsed with a strict pattern
 

@@ -65,6 +65,17 @@ it('sends the location of an ordinary exception too', function(): void {
         ->and($body['location']['file'])->toEndWith('tests/Feature/LocationTest.php');
 });
 
+it('scrubs a secret in the file path', function(): void {
+    $thrown = captureThrowableFromFixture('trace-secret-jan@example.com');
+    expect($thrown->getFile())->toContain('jan@example.com');
+
+    $body = bodyReportedFor($thrown);
+
+    expect($body['location']['file'])
+        ->toContain('[REDACTED:email]/throw_with_token_in_path.php')
+        ->not->toContain('jan@example.com');
+});
+
 it('cuts the file to 255 characters', function(): void {
     $body = bodyReportedFor(fatalErrorAt(base_path(str_repeat('a', 300) . '.php'), 3));
 
