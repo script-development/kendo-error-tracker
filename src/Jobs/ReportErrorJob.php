@@ -24,6 +24,8 @@ use function sprintf;
  * tracking must not amplify load during an outage — so $tries = 1 and failed()
  * logs to the local PHP error_log instead. The send itself also swallows, so
  * failed() only fires on an infrastructure-level job failure.
+ *
+ * @api Public API: consumers may use it. A change to it is a breaking change. A consumer may dispatch it with a payload it built and scrubbed itself.
  */
 final class ReportErrorJob implements ShouldQueue
 {

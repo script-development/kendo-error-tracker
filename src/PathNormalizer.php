@@ -29,6 +29,8 @@ use function str_starts_with;
  * or `/Users/<user>/` (M-3). A secondary redaction pass replaces just the
  * username segment of those two shapes, everywhere in the trace, after the
  * exact-prefix strip runs.
+ *
+ * @api Public API: consumers may use it. A change to it is a breaking change.
  */
 final readonly class PathNormalizer
 {
@@ -69,6 +71,8 @@ final readonly class PathNormalizer
     /**
      * The path relative to the base path, or null when the path does not
      * start with the base-path prefix.
+     *
+     * @internal
      */
     public function relativize(string $path): ?string
     {

@@ -24,6 +24,8 @@ use function config_path;
  * Merges the package config, publishes it to config/error-tracker.php, and binds
  * the ErrorTracker singleton — wiring its PathNormalizer to the consuming app's
  * own base_path() so the exact-prefix strip targets the right deploy root.
+ *
+ * @internal Internal: not for use outside this package. It may change in any release. Laravel discovers it; do not call it.
  */
 final class ErrorTrackerServiceProvider extends ServiceProvider
 {

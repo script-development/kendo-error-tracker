@@ -22,6 +22,8 @@ use function str_replace;
  * - HTTP `Bearer <token>` authorization values (and bare reuse of the same
  *   credential value elsewhere in the string)
  * - Database DSN passwords (`scheme://user:pass@host`)
+ * - credentials in a query string or a `name=value` pair (`?authKey=…`,
+ *   `&key=…`, `DB_PASSWORD=…`)
  * - API-key prefixes (`sk_live_...`, `AKIA...`)
  * - IPv4 addresses
  * - Dutch BSN (9-digit citizen service number, including grouped forms and
@@ -41,14 +43,16 @@ use function str_replace;
  *   space are not fully covered — the unicode class deliberately excludes the
  *   space to avoid swallowing surrounding prose. IDN domains and unicode (but
  *   unquoted) local parts ARE covered.
- * - Free-text PII (a name, address, or care-data value embedded in a message —
- *   e.g. a `QueryException`'s bound parameters) is not a regex-able secret
- *   shape and is out of scope for this scrubber; see the per-exception-type
- *   carrier-strip in `ErrorTracker::buildPayload()` for that class of leak.
+ * - Free-text PII (a name, address, or care-data value embedded in a message)
+ *   is not a regex-able secret shape and is out of scope for this scrubber.
+ *   Only a `PDOException`-family message is replaced, by the carrier-strip in
+ *   `ErrorTracker::safeMessage()`.
  * - IPv6 addresses are not redacted.
  * - Phone numbers and session IDs remain out of scope (no shape distinct
  *   enough from other numeric/opaque identifiers to redact without a high
  *   false-positive rate).
+ *
+ * @api Public API: consumers may use it. A change to it is a breaking change.
  */
 final class Scrubber
 {
@@ -59,12 +63,14 @@ final class Scrubber
      * Bearer token: the `Bearer` keyword, bounded horizontal whitespace (no
      * newline span), then the credential captured in group 1.
      *
-     * The credential class deliberately omits `/` so a stray `Bearer ` in front
-     * of a URL path (`Bearer /api/v1/users/123`) does not consume the path
-     * (M-4). JWT/opaque tokens use `A-Za-z0-9 . _ ~ + -` with optional `=`
-     * base64 padding.
+     * The credential takes `A-Za-z0-9 . _ ~ + - | /` with optional `=` base64
+     * padding: a Sanctum token is `id|secret`, and a base64 token can carry a
+     * `/` (WR-2511). Its first character may not be `/`, so a stray `Bearer `
+     * in front of an absolute URL path (`Bearer /api/v1/users/123`) does not
+     * consume the path (M-4); a relative path after the keyword does read as a
+     * credential.
      */
-    private const string BEARER = '/Bearer[ \t]+([A-Za-z0-9._~+-]+=*)/i';
+    private const string BEARER = '/Bearer[ \t]+([A-Za-z0-9._~+|-][A-Za-z0-9._~+\/|-]*=*)/i';
 
     /** Shortest Bearer credential whose bare reuse elsewhere is also redacted. */
     private const int BARE_REUSE_MIN_LENGTH = 16;
@@ -88,6 +94,19 @@ final class Scrubber
      * breaks never belong to a password.
      */
     private const string DSN_PASSWORD = '/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^:\/?#\s@]*:)((?!\d+(?![\w@]))(?:[^\s@?]|[ \t]|@(?=[^\s@\/?#]*@))++|[^@\/?#\s]+)(@)/';
+
+    /**
+     * A credential in a query string or a `name=value` pair (WR-2511): the
+     * value after a parameter whose name ends in a secret-bearing word, or
+     * after a bare `key` parameter of a query string. Group 1 keeps the name
+     * and the `=`; the value runs to the next `&`, whitespace, `#` or quote.
+     *
+     * The name may carry any prefix (`DB_PASSWORD`, `oauth_token`, `x_api_key`),
+     * but a bare `key=` counts only after `?`, `&` or `;`, so prose such as
+     * `foreign key=` or `Undefined array key=` is left alone. A value another
+     * pattern already redacted is not matched again.
+     */
+    private const string QUERY_SECRET = '/((?:[?&;]key=)|(?<![A-Za-z0-9])[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|auth[_-]?key|authkey|private[_-]?key|signature)=)(?!\[REDACTED:)[^&\s#"\']+/i';
 
     /** Stripe-style live secret key prefix. */
     private const string API_KEY_STRIPE = '/\bsk_live_[A-Za-z0-9]{10,}\b/';
@@ -120,6 +139,7 @@ final class Scrubber
         $value = (string) preg_replace(self::JWT, '[REDACTED:jwt]', $value);
         $value = $this->scrubBearer($value);
         $value = (string) preg_replace(self::DSN_PASSWORD, '$1[REDACTED:dsn-password]$3', $value);
+        $value = (string) preg_replace(self::QUERY_SECRET, '$1[REDACTED:secret]', $value);
         $value = (string) preg_replace(self::API_KEY_STRIPE, '[REDACTED:api-key]', $value);
         $value = (string) preg_replace(self::API_KEY_AWS, '[REDACTED:api-key]', $value);
         $value = (string) preg_replace(self::IPV4, '[REDACTED:ip]', $value);

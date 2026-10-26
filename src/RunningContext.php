@@ -29,6 +29,8 @@ use function end;
  * exception. The outermost command of a console process is that process, so
  * it is kept for the process's life; a nested `Artisan::call()` is dropped
  * when it finishes.
+ *
+ * @internal Internal: not for use outside this package. It may change in any release.
  */
 final class RunningContext
 {

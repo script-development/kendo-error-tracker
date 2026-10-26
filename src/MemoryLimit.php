@@ -15,6 +15,8 @@ use function preg_match;
 
 /**
  * Turns a `memory_limit` ini value into bytes.
+ *
+ * @internal Internal: not for use outside this package. It may change in any release.
  */
 final class MemoryLimit
 {

@@ -31,7 +31,7 @@ Set the environment variables (the config reads `ERROR_TRACKER_*`). Only the fir
 |---|---|---|---|
 | `ERROR_TRACKER_KENDO_URL` | `kendo_url` | **Required** | Base URL of your kendo tenant — always `https://{tenant}.kendo.dev` (e.g. `https://script.kendo.dev`). |
 | `ERROR_TRACKER_PROJECT` | `project` | **Required** | The kendo **project id** that owns the errors (the `{project}` route-key; kendo binds it by id). |
-| `ERROR_TRACKER_TOKEN` | `token` | **Required** | A kendo project token carrying the `error-events:write` ability (Bearer). |
+| `ERROR_TRACKER_TOKEN` | `token` | **Required** | A kendo project token with the **Read & write** access level (Bearer). See [Minting a project token](#minting-a-project-token). |
 | `ERROR_TRACKER_ENVIRONMENT` | `environment` | Optional | Deploy environment label. May be omitted — falls back to `APP_ENV`, then `production`. Only set it to override that derived default. |
 | `ERROR_TRACKER_RELEASE` | `release` | Optional | Release identifier (git sha / version tag). May be omitted — when unset it is dropped from the payload entirely. |
 | `ERROR_TRACKER_SYNC` | `sync` | Optional | `false` (default) queues the report; `true` POSTs inline. `on`, `yes` and `1` also POST inline; any other value, `off` and `no` included, queues. |
@@ -58,13 +58,16 @@ The optional knobs below are shown with their defaults; leave them commented out
 
 ## Minting a project token
 
-The token is a kendo **project token** carrying the `error-events:write` ability:
+The token is a kendo **project token** with the **Read & write** access level. Kendo replaced token abilities with access levels on 2026-10-05; the old `error-events:write` ability no longer exists.
 
-1. Open the kendo project's **API token** settings.
-2. Create a token scoped to the project and grant it the `error-events:write` ability.
-3. Copy the token into `ERROR_TRACKER_TOKEN`.
+1. Sign in to kendo as a **dedicated account** made for this app, not as a person (see below).
+2. Open the project's **Settings** and go to **API Tokens**.
+3. Create a token, name it after the app, and choose the access **Read & write**. A Read token gets `403` on every write, error events included.
+4. Copy the token into `ERROR_TRACKER_TOKEN`. Kendo shows it only once.
 
-The token is bound to the project it was minted under. A token used against a different project's route is rejected by the server (`422`) — and like every failure, the client swallows it.
+**Why a dedicated account.** A project token acts as the account that created it, at its access level. A Read & write token can therefore do in the project whatever its creator may do there, reading reports, issues and error groups included, not only send error events. The token sits in the app's environment, so anyone who can read that environment gets that access. Make the creating account a member of this project only, with no more permission than creating error groups (`Error Groups: Create`). Kendo has no send-only access level yet (KD-1908). A token converted from the old `error-events:write` ability is Read & write too: replace it with one minted this way.
+
+The token is bound to the project it was minted under. A token used against a different project's route is rejected by the server (`403`) — and like every failure, the client swallows it.
 
 ## Integration
 
@@ -181,19 +184,22 @@ No other user data is added: not the user's name, not their email address, and n
 
 ## Scrubbing
 
-Before send, the message, the stack trace, the causes, the exception code, the runtime and framework versions, the context and the host are scrubbed of the following patterns (each replaced with a `[REDACTED:<kind>]` marker):
+Before send, the message, the stack trace, the location's file, the causes, the exception code, the runtime and framework versions, the context and the host are scrubbed of the following patterns (each replaced with a `[REDACTED:<kind>]` marker):
 
 | Pattern | Example |
 |---|---|
 | JWT | `eyJhbGc...` (three base64url segments) |
-| Bearer token | `Bearer <credential>` |
+| Bearer token | `Bearer <credential>`, including a Sanctum `id\|secret` token |
 | Database DSN password | `mysql://user:pass@host` — only the password is redacted |
+| Query-string or `name=value` credential | `?authKey=…`, `&key=…`, `DB_PASSWORD=…`, `oauth_token=…` — only the value is redacted, as `[REDACTED:secret]` |
 | API-key prefix | `sk_live_...`, `AKIA...` |
 | IPv4 address | `192.168.1.42` |
 | BSN (Dutch citizen service number) | a 9-digit run passing the eleven-test (Dutch: elfproef) checksum |
 | Email address | `user@example.com` |
 
 BSN candidates are checksum-validated (the eleven-test) before redaction, so an arbitrary 9+-digit ID (an order number, invoice ID, or timestamp) is not falsely redacted, and a real BSN embedded in a longer digit run (e.g. a phone number) is still caught.
+
+A query-string credential is redacted when the parameter name ends in `password`, `passwd`, `pwd`, `secret`, `token`, `api_key`, `apikey`, `auth_key`, `authkey`, `private_key` or `signature` (any case, with `-` or `_` or no separator inside the name, and any prefix), or when it is a bare `key` parameter after `?`, `&` or `;`. The value runs to the next `&`, whitespace, `#` or quote. Prose such as `foreign key=` or `Undefined array key=` is left alone.
 
 Free-text PII that isn't a fixed secret shape — a name, address, or care-data value embedded in a database error message — is not covered by pattern matching. `QueryException` and `PDOException` are instead handled by a per-exception-type carrier-strip: the message is replaced with just the exception class, SQLSTATE, and driver error code, dropping the SQL string and bound parameter values entirely.
 
@@ -204,9 +210,15 @@ The stack trace carries each frame's file, line, class and function, and no argu
 - IPv6 addresses.
 - A DSN password with an unencoded `?` or line break, or one that opens with digits followed by a reserved character or a space (`mysql://u:12/ab@db`), which reads as a port, is not fully redacted.
 - JWTs that do not start with the conventional `eyJ` header, and truncated tokens.
-- Email addresses with a quoted local part containing a space (`"jan de vries"@example.com`).
+- Email addresses with a quoted local part containing a space (`"jan de vries"@example.com`), and URL-encoded email addresses (`jan%40example.com`).
+- Credentials outside the `name=value` form: a JSON pair (`"api_key":"…"`), a header or colon form (`X-Api-Key: …`, `password: …`), a URL-encoded pair (`api_key%3D…`), a name the list above does not end in (`APP_KEY=…`, `sig=…`, `access=…`), and a secret in a URL path (`/api/<token>/sets`).
+- Other query-string values: a postcode, a house number or an address in `?address=…` is sent as written.
+- IBANs. The account number of an IBAN can pass the BSN checksum, so `NL91ABNA0417164300` may go out as `NL91ABNA0[REDACTED:bsn]`, with the bank code kept and the wrong label.
+- A BSN written in a grouping other than 3-3-3 (`1234 56 782`), and an 8-digit BSN whose leading zero was dropped.
+- Dates, including dates of birth.
+- Phone numbers. Part of a Dutch mobile number in international form (`+316…`) can pass the BSN checksum and be redacted as `[REDACTED:bsn]`; the rest of the number is sent.
+- Session IDs.
 - Free-text PII in a message other than a database exception's: a name, an address, a care-data value.
-- Phone numbers and session IDs.
 
 ## Path normalization
 
@@ -223,7 +235,18 @@ Both modes swallow every failure.
 
 ## Failure handling
 
-A `202` response is success. Every failure — HTTP timeout, `401` (no/invalid token), `403` (token lacks `error-events:write`), `422` (token not linked to the project, or revoked), `5xx`, or an unreachable host — is written to the local `error_log` and never thrown.
+A `202` response is success. Every failure — HTTP timeout, `401` (missing, invalid, revoked or expired token), `403` (a Read token, a token linked to another project, or the Error Tracking feature switched off), `422` (a field kendo refuses), `429` (rate limit), `5xx`, or an unreachable host — is written to the local `error_log` and never thrown.
+
+## Public API
+
+These classes and methods are the public API, marked `@api` in the source. Within a `0.x` minor they keep their signatures, so a patch release does not break code that uses them:
+
+- `ErrorTracker`: resolve it from the container; `report(Throwable)` and `scopeUserHashUsing(Closure)`.
+- `Scrubber`: `new Scrubber` and `scrub(string): string`.
+- `PathNormalizer`: `new PathNormalizer(string $basePath)` and `normalize(string): string`.
+- `Jobs\ReportErrorJob`: `new ReportErrorJob(array $payload)`, its public `payload`, and `dispatch` through the bus. A consumer that builds its own payload is responsible for scrubbing it.
+
+What `Scrubber` and `PathNormalizer` redact may widen in a patch release: a new pattern is a fix. Everything else is internal, marked `@internal`, and may change in any release: `ErrorTracker`'s constructor and `send()`, `PathNormalizer::relativize()`, `RunningContext`, `MemoryLimit` and `ErrorTrackerServiceProvider`. `tests/Unit/PublicApiTest.php` pins the public signatures.
 
 ## Development
 
