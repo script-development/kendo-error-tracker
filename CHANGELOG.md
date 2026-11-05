@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-11-05
+
 ### Added
 
 - **Where the exception was raised (KD-1873).** A report now carries `location`, the throwable's `getFile()` and `getLine()`. The file goes through the same path normalization and scrubbing as the trace and is cut to 255 characters. A fatal error's stack trace holds no frame but `{main}`, so kendo grouped every fatal error of one class together and showed `at {main}`. Once kendo ships KD-2205, it groups such an event by its exception class and this file, and shows the file and line. Other exceptions group as before. When PHP gives no file or a line below 1, as it does for some fatal errors, the key is left out and the report is still sent.
