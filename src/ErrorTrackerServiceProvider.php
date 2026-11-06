@@ -15,6 +15,7 @@ use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\ServiceProvider;
+use ScriptDevelopment\KendoErrorTracker\Console\CheckCommand;
 
 use function config_path;
 
@@ -61,6 +62,8 @@ final class ErrorTrackerServiceProvider extends ServiceProvider
         $events->listen(CommandFinished::class, static fn() => $running->commandFinished());
 
         if ($this->app->runningInConsole()) {
+            $this->commands([CheckCommand::class]);
+
             $this->publishes([
                 __DIR__ . '/../config/error-tracker.php' => config_path('error-tracker.php'),
             ], 'error-tracker-config');

@@ -32,7 +32,8 @@ The client targets the kendo error-events ingestion endpoint shipped by KD-0771:
 | `PathNormalizer` | Exact `base_path()` prefix strip of every frame (mirrors `laravel/nightwatch`'s `Location::normalizeFile()`). |
 | `Jobs\ReportErrorJob` | Async carrier for the already-scrubbed payload. `$tries = 1` (0 retries); `failed()` logs to `error_log`, never requeues. |
 | `RunningContext` | The jobs and console commands in flight, fed by the provider's queue and command listeners. A job that threw is kept against its exception (Laravel reports it after the job ended); the outermost console command lives as long as the process. |
-| `ErrorTrackerServiceProvider` | Auto-discovered. Merges + publishes config; binds `ErrorTracker`, `PathNormalizer` (wired to the app's `base_path()`) and `RunningContext`, and listens for the job and command events. |
+| `Console\CheckCommand` | `error-tracker:check`, the release check an app opts into. Fails on what `ErrorTracker::missingSettings()` lists, the same list `send()` drops a report on. Unlike every other path it fails loudly, and it sends nothing and prints no value, so a wrong token still passes. |
+| `ErrorTrackerServiceProvider` | Auto-discovered. Merges + publishes config; binds `ErrorTracker`, `PathNormalizer` (wired to the app's `base_path()`) and `RunningContext`, listens for the job and command events, and registers `error-tracker:check` in the console. |
 
 **Swallow-on-failure is the load-bearing invariant.** `report()` is called from inside the consumer's exception handler — it must never throw and never block. Every path (payload build, dispatch, HTTP send) is wrapped; failures go to `error_log`.
 

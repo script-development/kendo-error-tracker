@@ -24,6 +24,7 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 use function array_filter;
+use function array_values;
 use function count;
 use function error_log;
 use function filter_var;
@@ -41,6 +42,7 @@ use function mb_rtrim;
 use function mb_strlen;
 use function mb_strpos;
 use function mb_substr;
+use function mb_trim;
 use function memory_get_peak_usage;
 use function method_exists;
 use function preg_match;
@@ -149,7 +151,7 @@ final class ErrorTracker
      * this is fire-and-forget telemetry. Every failure — timeout, 4xx, 5xx,
      * unreachable host — is caught and logged; only a 202 is treated as success.
      *
-     * If any required key (kendo_url / project / token) is empty the call is
+     * If any required key (kendo_url / project / token) is blank the call is
      * short-circuited with a distinct operator-facing log line and no POST is
      * attempted.
      *
@@ -167,7 +169,7 @@ final class ErrorTracker
             $project = $this->configString('project');
             $token = $this->configString('token');
 
-            if ($kendoUrl === '' || $project === '' || $token === '') {
+            if ($this->missingSettings() !== []) {
                 error_log('[kendo-error-tracker] not configured: missing kendo_url/project/token; report dropped');
 
                 return;
@@ -196,6 +198,23 @@ final class ErrorTracker
         } catch (Throwable $e) {
             error_log(sprintf('[kendo-error-tracker] send failed: %s', $e->getMessage()));
         }
+    }
+
+    /**
+     * The settings send() cannot go without that are blank: missing, empty,
+     * only whitespace or not a scalar. A wrong value is not blank. send() drops
+     * a report on any of these, and error-tracker:check fails on the same list.
+     *
+     * @internal
+     *
+     * @return list<'kendo_url'|'project'|'token'>
+     */
+    public function missingSettings(): array
+    {
+        return array_values(array_filter(
+            ['kendo_url', 'project', 'token'],
+            fn(string $key): bool => mb_trim($this->configString($key)) === '',
+        ));
     }
 
     /**

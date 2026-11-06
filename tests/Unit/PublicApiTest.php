@@ -68,7 +68,7 @@ function signature(ReflectionMethod $method): string
 it('marks every class in src as either public or internal', function(): void {
     $classes = packageClasses();
 
-    expect($classes)->toHaveCount(7);
+    expect($classes)->toHaveCount(8);
 
     $tags = [];
 
@@ -77,6 +77,7 @@ it('marks every class in src as either public or internal', function(): void {
     }
 
     expect($tags)->toBe([
+        'ScriptDevelopment\KendoErrorTracker\Console\CheckCommand' => 'internal',
         'ScriptDevelopment\KendoErrorTracker\ErrorTracker' => 'api',
         'ScriptDevelopment\KendoErrorTracker\ErrorTrackerServiceProvider' => 'internal',
         'ScriptDevelopment\KendoErrorTracker\Jobs\ReportErrorJob' => 'api',

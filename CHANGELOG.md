@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **`php artisan error-tracker:check`, a release check (EZ-0093).** It exits 1 and names each of `ERROR_TRACKER_KENDO_URL`, `ERROR_TRACKER_PROJECT` and `ERROR_TRACKER_TOKEN` that is blank, and exits 0 otherwise. It sends nothing and prints no value, so a wrong token or URL still passes. An app opts in by adding it to its release step; an app that doesn't add it runs nothing new. A release went live with an empty token and lost about 14 hours of reports, because a dropped report only writes to `error_log`, and only when an exception occurs.
+
+### Changed
+
+- **A setting that holds only whitespace now reads as blank (EZ-0093).** `send()` drops the report and logs `not configured`, the same decision the check makes. It used to POST: a whitespace token went out as a bare `Bearer`, which kendo can only answer with `401`, and a whitespace URL or project had nowhere valid to go. A report that was reaching kendo is unaffected.
+
 ## [0.2.2] — 2026-11-05
 
 ### Added
