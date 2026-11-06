@@ -56,6 +56,18 @@ The optional knobs below are shown with their defaults; leave them commented out
 # ERROR_TRACKER_TIMEOUT=5            # total seconds to wait for the POST
 ```
 
+## Release check
+
+Without the three required settings a report is dropped, and the only sign is a line in `error_log` when an exception occurs. To fail a release instead, add the check to your release step, ahead of anything that changes the app:
+
+```bash
+php artisan error-tracker:check && php artisan migrate --force
+```
+
+It exits `1` and names each required setting that is blank: missing, empty, only whitespace or not a scalar. Otherwise it exits `0`. These are the same values `send()` drops a report on. It reads the app's resolved config, so it must run where the app's secrets are, and a config cached without them reads as blank, as it would for a report.
+
+It catches blank settings only. It sends nothing, so a wrong token or URL passes and shows up as `send rejected` or `send failed` in `error_log`. It never prints a value. An app that doesn't add it runs nothing new.
+
 ## Minting a project token
 
 The token is a kendo **project token** with the **Read & write** access level. Kendo replaced token abilities with access levels on 2026-10-05; the old `error-events:write` ability no longer exists.
@@ -245,8 +257,9 @@ These classes and methods are the public API, marked `@api` in the source. Withi
 - `Scrubber`: `new Scrubber` and `scrub(string): string`.
 - `PathNormalizer`: `new PathNormalizer(string $basePath)` and `normalize(string): string`.
 - `Jobs\ReportErrorJob`: `new ReportErrorJob(array $payload)`, its public `payload`, and `dispatch` through the bus. A consumer that builds its own payload is responsible for scrubbing it.
+- `php artisan error-tracker:check`: its name and its exit codes, `0` set and `1` blank. Its wording is not.
 
-What `Scrubber` and `PathNormalizer` redact may widen in a patch release: a new pattern is a fix. Everything else is internal, marked `@internal`, and may change in any release: `ErrorTracker`'s constructor and `send()`, `PathNormalizer::relativize()`, `RunningContext`, `MemoryLimit` and `ErrorTrackerServiceProvider`. `tests/Unit/PublicApiTest.php` pins the public signatures.
+What `Scrubber` and `PathNormalizer` redact may widen in a patch release: a new pattern is a fix. Everything else is internal, marked `@internal`, and may change in any release: `ErrorTracker`'s constructor, `send()` and `missingSettings()`, `PathNormalizer::relativize()`, `RunningContext`, `MemoryLimit`, `ErrorTrackerServiceProvider` and the class behind `error-tracker:check`. `tests/Unit/PublicApiTest.php` pins the public signatures.
 
 ## Development
 
