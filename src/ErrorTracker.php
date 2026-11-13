@@ -488,14 +488,15 @@ final class ErrorTracker
     }
 
     /**
-     * The class registered under the command name, loading that one command.
+     * The class registered under the command name, loading that one command,
+     * in className()'s form: a command can be an anonymous class.
      */
     private function commandClass(string $name): ?string
     {
         $kernel = $this->container->make(ConsoleKernel::class);
         $command = method_exists($kernel, 'findCommand') ? $kernel->findCommand($name) : ($kernel->all()[$name] ?? null);
 
-        return is_object($command) ? $command::class : null;
+        return is_object($command) ? $this->className($command::class) : null;
     }
 
     /**

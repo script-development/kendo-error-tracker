@@ -17,6 +17,7 @@ Both switches read like `ERROR_TRACKER_SYNC`: `true`, `on`, `yes` and `1` keep t
 ### Fixed
 
 - **An anonymous class in a stack frame sent its path and compile counter.** A frame's class was copied verbatim, so a frame of an anonymous class sent `class@anonymous\0/abs/file.php:LINE$N`: the per-process counter split one error into a fingerprint per worker, and a class declared outside `base_path()` sent its absolute path. A frame's class, in the trace and in each cause's, now takes the form `exception_class` already had (WR-0798): the counter dropped, the file relative to `base_path()`, or its basename outside it. Consumer-visible: an error whose trace passes through an anonymous class may re-fingerprint once on upgrade.
+- **An anonymous console command sent its path in `context.class`.** A command registered as an anonymous class sent its declaration file's absolute path and compile counter as the command context's `class`. It now takes the same form.
 
 ## [0.2.3] — 2026-11-06
 

@@ -2,9 +2,11 @@
 
 declare(strict_types = 1);
 
+use Illuminate\Foundation\Console\Kernel;
 use Illuminate\Support\Facades\Http;
 use ScriptDevelopment\KendoErrorTracker\ErrorTracker;
 use ScriptDevelopment\KendoErrorTracker\PathNormalizer;
+use ScriptDevelopment\KendoErrorTracker\RunningContext;
 
 // A frame's class is an anonymous class's name when the exception passed
 // through one of its methods: `class@anonymous\0/abs/file.php:LINE$N`. The
@@ -135,4 +137,37 @@ it('normalises an anonymous frame in every cause of the chain', function(): void
         ->and($entry['stack_trace'])->not->toContain($this->frameRoot)
         ->and(mb_strlen($entry['exception_class']))->toBeLessThanOrEqual(255)
         ->and(mb_strlen($entry['stack_trace']))->toBeLessThanOrEqual(131_072);
+});
+
+it('sends an anonymous console command class in the same form', function(): void {
+    $root = $this->frameRoot . '/shared';
+    @mkdir($root . '/lib', 0o777, true);
+    file_put_contents($root . '/lib/AnonymousCommand.php', <<<'PHP'
+        <?php
+        return new class extends Illuminate\Console\Command {
+            protected $signature = 'kendo:anonymous';
+
+            public function handle(): int
+            {
+                return 0;
+            }
+        };
+        PHP);
+
+    $command = require $root . '/lib/AnonymousCommand.php';
+
+    expect($command::class)->toContain($this->frameRoot);
+
+    $kernel = new Kernel(app(), app('events'));
+    app()->instance(Illuminate\Contracts\Console\Kernel::class, $kernel);
+    $kernel->registerCommand($command);
+    app(RunningContext::class)->commandStarted('kendo:anonymous');
+
+    $context = bodyReportedWithBasePath($this->frameRoot . '/current', new RuntimeException('boom'))['context'];
+
+    expect($context)->toBe([
+        'kind' => 'command',
+        'name' => 'kendo:anonymous',
+        'class' => "Illuminate\\Console\\Command@anonymous\0[REDACTED:path]/AnonymousCommand.php:2",
+    ]);
 });
