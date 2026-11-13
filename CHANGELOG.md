@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-11-14
+
 ### Added
 
 - **`ERROR_TRACKER_SEND_MESSAGES`, a switch to withhold every message.** Off, the message and every cause's message, a database exception's fingerprint included, are sent as `[REDACTED:message]`. A message is free text, and scrubbing does not catch a name or an address in it; consumers whose data posture allows none built their own payload to withhold it. On by default, so nothing changes until an app sets it.
