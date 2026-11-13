@@ -106,4 +106,53 @@ return [
 
     'timeout' => env('ERROR_TRACKER_TIMEOUT', 5),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Send messages
+    |--------------------------------------------------------------------------
+    |
+    | When true (default) each report carries the exception's message, and
+    | each cause's, path-normalized and scrubbed; a database exception's
+    | message is replaced by its class and SQLSTATE. When false every message
+    | is sent as "[REDACTED:message]". Turn it off when nothing may leave that
+    | a scrubber cannot vouch for: a message is free text, and no pattern
+    | matches a name or an address in it. `true`, `on`, `yes` and `1` keep it
+    | on; any other value turns it off.
+    |
+     */
+
+    'send_messages' => env('ERROR_TRACKER_SEND_MESSAGES', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Send user hash
+    |--------------------------------------------------------------------------
+    |
+    | When true (default) a report from a request whose default guard holds a
+    | signed-in user carries user_hash, an HMAC of the user's id, so kendo can
+    | count affected users. The hash is personal data under the AVG: it links
+    | one user's reports. When false the key is never sent and the tenant
+    | resolver is never called. `true`, `on`, `yes` and `1` keep it on; any
+    | other value turns it off.
+    |
+     */
+
+    'send_user_hash' => env('ERROR_TRACKER_SEND_USER_HASH', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue connection
+    |--------------------------------------------------------------------------
+    |
+    | The queue connection ReportErrorJob is dispatched on in async mode. Null
+    | (default) or blank uses the app's default connection. A report raised
+    | inside a database transaction is written with that transaction, so a
+    | rollback deletes it. Name a queue connection whose database connection
+    | is a second connection onto the same database, and the report survives
+    | the rollback. The app defines both connections; see the README.
+    |
+     */
+
+    'queue_connection' => env('ERROR_TRACKER_QUEUE_CONNECTION'),
+
 ];
