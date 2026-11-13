@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **`ERROR_TRACKER_SEND_MESSAGES`, a switch to withhold every message.** Off, the message and every cause's message, a database exception's fingerprint included, are sent as `[REDACTED:message]`. A message is free text, and scrubbing does not catch a name or an address in it; consumers whose data posture allows none built their own payload to withhold it. On by default, so nothing changes until an app sets it.
+- **`ERROR_TRACKER_SEND_USER_HASH`, a switch to send no `user_hash`.** Off, the key is never sent and the tenant resolver is never called. The hash links one user's reports, so it is personal data under the AVG. On by default.
+- **`ERROR_TRACKER_QUEUE_CONNECTION`, the connection a queued report is dispatched on.** A report raised inside a database transaction was written through the app's default queue connection, so a rollback deleted it (LK-1662). An app can now name a queue connection that writes through a second connection onto the same database; the README's "Reports from inside a transaction" shows the setup. Unset, the default connection is used as before.
+
+Both switches read like `ERROR_TRACKER_SYNC`: `true`, `on`, `yes` and `1` keep them on, and any other value turns them off, so a typo withholds rather than sends.
+
+### Fixed
+
+- **An anonymous class in a stack frame sent its path and compile counter.** A frame's class was copied verbatim, so a frame of an anonymous class sent `class@anonymous\0/abs/file.php:LINE$N`: the per-process counter split one error into a fingerprint per worker, and a class declared outside `base_path()` sent its absolute path. A frame's class, in the trace and in each cause's, now takes the form `exception_class` already had (WR-0798): the counter dropped, the file relative to `base_path()`, or its basename outside it. Consumer-visible: an error whose trace passes through an anonymous class may re-fingerprint once on upgrade.
+
 ## [0.2.3] — 2026-11-06
 
 ### Added

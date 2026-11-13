@@ -37,6 +37,9 @@ Set the environment variables (the config reads `ERROR_TRACKER_*`). Only the fir
 | `ERROR_TRACKER_SYNC` | `sync` | Optional | `false` (default) queues the report; `true` POSTs inline. `on`, `yes` and `1` also POST inline; any other value, `off` and `no` included, queues. |
 | `ERROR_TRACKER_CONNECT_TIMEOUT` | `connect_timeout` | Optional | Seconds to wait while connecting to the kendo host (default `2`). A value that is not above 0 and at most 30 falls back to the default. |
 | `ERROR_TRACKER_TIMEOUT` | `timeout` | Optional | Total seconds to wait for the POST (default `5`); bounds the call so a hung host never blocks the caller. A value that is not above 0 and at most 30 falls back to the default. |
+| `ERROR_TRACKER_SEND_MESSAGES` | `send_messages` | Optional | `true` (default) sends each message, scrubbed. Any other value sends every message, each cause's and a database exception's included, as `[REDACTED:message]`. Set it to `false` when nothing may leave that a scrubber cannot vouch for: a message is free text, and scrubbing does not catch a name or an address in it. `on`, `yes` and `1` also keep it on; a typo turns it off. |
+| `ERROR_TRACKER_SEND_USER_HASH` | `send_user_hash` | Optional | `true` (default) sends `user_hash` for a signed-in user (see [Affected users](#affected-users)). Any other value never sends the key and never calls the tenant resolver. Set it to `false` when the report must carry no personal data: the hash links one user's reports, so it is personal data under the AVG. `on`, `yes` and `1` also keep it on; a typo turns it off. |
+| `ERROR_TRACKER_QUEUE_CONNECTION` | `queue_connection` | Optional | The queue connection `ReportErrorJob` is dispatched on in async mode. Unset or blank (default) uses your default connection. Set it when a report raised inside a database transaction must survive that transaction's rollback; see [Reports from inside a transaction](#reports-from-inside-a-transaction). |
 
 Minimal working config — just the three required vars:
 
@@ -54,6 +57,9 @@ The optional knobs below are shown with their defaults; leave them commented out
 # ERROR_TRACKER_SYNC=false           # true POSTs inline instead of queueing
 # ERROR_TRACKER_CONNECT_TIMEOUT=2    # seconds to wait while connecting
 # ERROR_TRACKER_TIMEOUT=5            # total seconds to wait for the POST
+# ERROR_TRACKER_SEND_MESSAGES=true   # false sends every message as [REDACTED:message]
+# ERROR_TRACKER_SEND_USER_HASH=true  # false never sends user_hash
+# ERROR_TRACKER_QUEUE_CONNECTION=    # queue connection for ReportErrorJob; default connection when unset
 ```
 
 ## Release check
@@ -118,7 +124,7 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
     "environment": "production",
     "release": "v1.2.3",
     "exception_class": "RuntimeException",
-    "message": "<scrubbed exception message>",
+    "message": "<scrubbed exception message, or [REDACTED:message]>",
     "stack_trace": "<scrubbed, path-normalized stack trace>",
     "location": {"file": "app/Services/OrderService.php", "line": 42},
     "previous_exceptions": [
@@ -145,6 +151,7 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
 }
 ```
 
+- `message` is the exception's message, path-normalized and scrubbed; a database exception's is replaced by its class, SQLSTATE and driver code (see [Scrubbing](#scrubbing)). With `send_messages` off, it is `[REDACTED:message]`, and so is every cause's.
 - `environment` reflects the resolved value (your `ERROR_TRACKER_ENVIRONMENT`, else `APP_ENV`, else `production`); `release` is omitted from the body entirely when unset.
 - `location` is where the exception was raised: `getFile()` and `getLine()`. The file goes through the same path normalization and scrubbing as the trace and is cut to 255 characters. Kendo reads it only when the stack trace holds no frame, as a fatal error's does, and then groups the event by exception class and this file. The key is left out when PHP gives no file or a line below 1.
 - `previous_exceptions` is the caused-by chain (`getPrevious()`), outermost cause first, at most 10 entries. Each cause goes through the same scrubbing, path normalization and database carrier-strip as the thrown exception. Each cause's message is cut to 65,535 characters and its stack trace to 131,072, the server's limits. The key is left out when the exception has no cause.
@@ -160,7 +167,7 @@ That single call is the whole integration. `report()` is **swallow-on-failure**:
   When more than one applies, a running job wins (including a sync-queue job inside a request), then the current route, then the console command. A report from anywhere else carries no `context`. Every context string is scrubbed and cut to 255 characters. It is not path-normalized: a route pattern is not a file path.
 
 - `host` is the name of the machine that ran the code (`gethostname()`), scrubbed and cut to 255 characters. It is left out when PHP cannot read it.
-- `user_hash` stands for the signed-in user. See [Affected users](#affected-users).
+- `user_hash` stands for the signed-in user. See [Affected users](#affected-users). With `send_user_hash` off, the key is never sent.
 
 A field the client cannot read is left out, and the rest of the report is still sent.
 
@@ -176,6 +183,7 @@ A field the client cannot read is left out, and the rest of the report is still 
 - No hash is sent when `APP_KEY` is not set, or when the user's id is not an integer or a non-empty string.
 - kendo keeps each hash for 90 days after it last saw it, then deletes it.
 - Changing `APP_KEY` changes every hash. A user who hits the error before and after the change counts twice until the old hash expires.
+- The hash is personal data under the AVG: it links one user's reports. Set `ERROR_TRACKER_SEND_USER_HASH=false` and it is never sent, and the tenant resolver below is never called.
 
 #### Multi-tenant apps
 
@@ -192,7 +200,7 @@ app(ErrorTracker::class)->scopeUserHashUsing(fn (): int|string|null => tenant()?
 - When it throws, or returns anything but an integer or a non-empty string, no hash is sent. The report is still sent.
 - Changing a tenant's key changes its users' hashes, as changing `APP_KEY` does.
 
-No other user data is added: not the user's name, not their email address, and no request body, header, cookie or URL. The exception's message and stack trace are sent as your code wrote them, after [Scrubbing](#scrubbing). Scrubbing catches an email address, but not a user id or a name: if your code puts one into an exception message, kendo receives it.
+No other user data is added: not the user's name, not their email address, and no request body, header, cookie or URL. The exception's message and stack trace are sent as your code wrote them, after [Scrubbing](#scrubbing). Scrubbing catches an email address, but not a user id or a name: if your code puts one into an exception message, kendo receives it, unless `ERROR_TRACKER_SEND_MESSAGES=false`.
 
 ## Scrubbing
 
@@ -230,13 +238,13 @@ The stack trace carries each frame's file, line, class and function, and no argu
 - Dates, including dates of birth.
 - Phone numbers. Part of a Dutch mobile number in international form (`+316…`) can pass the BSN checksum and be redacted as `[REDACTED:bsn]`; the rest of the number is sent.
 - Session IDs.
-- Free-text PII in a message other than a database exception's: a name, an address, a care-data value.
+- Free-text PII in a message other than a database exception's: a name, an address, a care-data value. `ERROR_TRACKER_SEND_MESSAGES=false` withholds every message instead.
 
 ## Path normalization
 
 Each stack frame's absolute path, and every absolute path in the message, has the app's own `base_path()` stripped (an **exact** prefix removal, mirroring `laravel/nightwatch`'s `Location::normalizeFile()`). The same exception thrown from `/var/www/html/app/Foo.php` and `/home/forge/app/Foo.php` normalizes to the identical `app/Foo.php`, so kendo fingerprints it once regardless of deploy root.
 
-An anonymous exception class is named after the file that declares it (`Parent@anonymous\0/abs/path/Foo.php:LINE$N`). `exception_class` drops the `$N` compile counter and strips `base_path()` from that file; any other declaration file (outside `base_path()` — vendor code on a shared mount, a symlinked release directory — or a stream-wrapper URI such as `phar://`) is reduced to its basename, `Parent@anonymous\0[REDACTED:path]/Foo.php:LINE`. Two anonymous classes with the same file name and line outside the app root therefore share a fingerprint. Stack frames outside `base_path()` are not reduced this way: they keep their absolute path, with only the `/home/<user>/` and `/Users/<user>/` username redacted.
+An anonymous exception class is named after the file that declares it (`Parent@anonymous\0/abs/path/Foo.php:LINE$N`). `exception_class` drops the `$N` compile counter and strips `base_path()` from that file; any other declaration file (outside `base_path()` — vendor code on a shared mount, a symlinked release directory — or a stream-wrapper URI such as `phar://`) is reduced to its basename, `Parent@anonymous\0[REDACTED:path]/Foo.php:LINE`. Two anonymous classes with the same file name and line outside the app root therefore share a fingerprint. A stack frame whose class is anonymous names that class in the same form. A stack frame's own file outside `base_path()` is not reduced this way: it keeps its absolute path, with only the `/home/<user>/` and `/Users/<user>/` username redacted.
 
 ## Dispatch modes
 
@@ -244,6 +252,23 @@ An anonymous exception class is named after the file that declares it (`Parent@a
 - **Sync:** set `error-tracker.sync` (`ERROR_TRACKER_SYNC=true`) to POST inline.
 
 Both modes swallow every failure.
+
+### Reports from inside a transaction
+
+On a database queue, the job row is written through the queue's database connection. When that is the connection your code's transaction runs on, a report raised inside the transaction is written into it, and a rollback deletes the report with everything else. To keep it, give reports a connection of their own. In `config/database.php`, add a second connection onto the same database (copy your `mysql` entry under a new name, such as `mysql_error_reports`). In `config/queue.php`, add a queue connection that writes through it:
+
+```php
+'error-reports' => [
+    'driver' => 'database',
+    'connection' => 'mysql_error_reports',
+    'table' => 'jobs',
+    'queue' => 'default',
+    'retry_after' => 90,
+    'after_commit' => false,
+],
+```
+
+Then set `ERROR_TRACKER_QUEUE_CONNECTION=error-reports`. The package only names the connection; your app defines both. The second connection opens its own database session, so a report adds one connection per process that reports. Run a worker for that queue: `php artisan queue:work error-reports`, or a worker on another database queue connection that reads the same table and queue. In sync mode nothing is queued and the setting does nothing.
 
 ## Failure handling
 
