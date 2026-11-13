@@ -296,8 +296,8 @@ final class ErrorTracker
      * list left empty. getTraceAsString() prints argument values unless
      * zend.exception_ignore_args is on, and PHP's compiled-in default is off
      * (WR-1497); a name passed as an argument is not a shape the scrubber can
-     * match. Where that ini is on, the string is byte-identical to
-     * getTraceAsString().
+     * match. A frame's class takes className(), so an anonymous class's
+     * frame carries no install path or compile counter.
      */
     private function traceWithoutArguments(Throwable $throwable): string
     {
@@ -308,7 +308,9 @@ final class ErrorTracker
                 ? sprintf('%s(%d)', $frame['file'], $frame['line'] ?? 0)
                 : '[internal function]';
 
-            $lines[] = sprintf('#%d %s: %s%s%s()', $index, $location, $frame['class'] ?? '', $frame['type'] ?? '', $frame['function']);
+            $class = isset($frame['class']) ? $this->className($frame['class']) : '';
+
+            $lines[] = sprintf('#%d %s: %s%s%s()', $index, $location, $class, $frame['type'] ?? '', $frame['function']);
         }
 
         $lines[] = sprintf('#%d {main}', count($lines));
@@ -576,7 +578,16 @@ final class ErrorTracker
      */
     private function exceptionClass(Throwable $throwable): string
     {
-        $class = $throwable::class;
+        return $this->className($throwable::class);
+    }
+
+    /**
+     * A class name as it is reported: exceptionClass() for a thrown class, and
+     * the same for a trace frame's class, so an anonymous class in the trace
+     * carries no install path or compile counter either.
+     */
+    private function className(string $class): string
+    {
         $marker = mb_strpos($class, self::ANONYMOUS);
 
         if ($marker === false) {
