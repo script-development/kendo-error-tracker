@@ -83,6 +83,9 @@ final class ErrorTracker
 
     private const string USER_HASH_KEY = 'kendo-error-tracker:user_hash';
 
+    /** Sent in place of every message when `send_messages` is off. */
+    private const string WITHHELD_MESSAGE = '[REDACTED:message]';
+
     /** Longest connect or total timeout, in seconds, the config may set. */
     private const float TIMEOUT_CEILING = 30.0;
 
@@ -138,7 +141,14 @@ final class ErrorTracker
                 return;
             }
 
-            $this->container->make(Dispatcher::class)->dispatch(new ReportErrorJob($payload));
+            $job = new ReportErrorJob($payload);
+            $connection = $this->config->get('error-tracker.queue_connection');
+
+            if (is_string($connection) && mb_trim($connection) !== '') {
+                $job->onConnection(mb_trim($connection));
+            }
+
+            $this->container->make(Dispatcher::class)->dispatch($job);
         } catch (Throwable $e) {
             error_log(sprintf('[kendo-error-tracker] report failed: %s', $e->getMessage()));
         }
@@ -249,7 +259,9 @@ final class ErrorTracker
             'memory_limit_bytes' => $this->optional('memory_limit_bytes', static fn(): ?int => MemoryLimit::toBytes(ini_get('memory_limit'))),
             'context' => $context,
             'host' => $this->optional('host', fn(): ?string => $this->host()),
-            'user_hash' => ($context['kind'] ?? null) === 'route' ? $this->optional('user_hash', fn(): ?string => $this->userHash()) : null,
+            'user_hash' => ($context['kind'] ?? null) === 'route' && $this->switchedOn('send_user_hash')
+                ? $this->optional('user_hash', fn(): ?string => $this->userHash())
+                : null,
         ];
 
         return array_filter($payload, static fn(mixed $value): bool => $value !== null);
@@ -280,9 +292,15 @@ final class ErrorTracker
     /**
      * Filesystem, include and permission errors carry absolute paths in the
      * message (WR-1499), so the message is path-normalized like the trace.
+     * With `send_messages` off every message is the placeholder: a message is
+     * free text, and no scrubber pattern matches a name or an address in it.
      */
     private function message(Throwable $throwable): string
     {
+        if (!$this->switchedOn('send_messages')) {
+            return self::WITHHELD_MESSAGE;
+        }
+
         return $this->scrubber->scrub($this->pathNormalizer->normalize($this->safeMessage($throwable)));
     }
 
@@ -296,8 +314,8 @@ final class ErrorTracker
      * list left empty. getTraceAsString() prints argument values unless
      * zend.exception_ignore_args is on, and PHP's compiled-in default is off
      * (WR-1497); a name passed as an argument is not a shape the scrubber can
-     * match. Where that ini is on, the string is byte-identical to
-     * getTraceAsString().
+     * match. A frame's class takes className(), so an anonymous class's
+     * frame carries no install path or compile counter.
      */
     private function traceWithoutArguments(Throwable $throwable): string
     {
@@ -308,7 +326,9 @@ final class ErrorTracker
                 ? sprintf('%s(%d)', $frame['file'], $frame['line'] ?? 0)
                 : '[internal function]';
 
-            $lines[] = sprintf('#%d %s: %s%s%s()', $index, $location, $frame['class'] ?? '', $frame['type'] ?? '', $frame['function']);
+            $class = isset($frame['class']) ? $this->className($frame['class']) : '';
+
+            $lines[] = sprintf('#%d %s: %s%s%s()', $index, $location, $class, $frame['type'] ?? '', $frame['function']);
         }
 
         $lines[] = sprintf('#%d {main}', count($lines));
@@ -468,14 +488,15 @@ final class ErrorTracker
     }
 
     /**
-     * The class registered under the command name, loading that one command.
+     * The class registered under the command name, loading that one command,
+     * in className()'s form: a command can be an anonymous class.
      */
     private function commandClass(string $name): ?string
     {
         $kernel = $this->container->make(ConsoleKernel::class);
         $command = method_exists($kernel, 'findCommand') ? $kernel->findCommand($name) : ($kernel->all()[$name] ?? null);
 
-        return is_object($command) ? $command::class : null;
+        return is_object($command) ? $this->className($command::class) : null;
     }
 
     /**
@@ -576,7 +597,16 @@ final class ErrorTracker
      */
     private function exceptionClass(Throwable $throwable): string
     {
-        $class = $throwable::class;
+        return $this->className($throwable::class);
+    }
+
+    /**
+     * A class name as it is reported: exceptionClass() for a thrown class, and
+     * the same for a trace frame's class, so an anonymous class in the trace
+     * carries no install path or compile counter either.
+     */
+    private function className(string $class): string
+    {
         $marker = mb_strpos($class, self::ANONYMOUS);
 
         if ($marker === false) {
@@ -631,6 +661,16 @@ final class ErrorTracker
         $driverCode = isset($errorInfo[1]) && is_scalar($errorInfo[1]) ? (string) $errorInfo[1] : 'unknown';
 
         return sprintf('%s [SQLSTATE %s] [driver code %s]', $this->exceptionClass($throwable), $sqlState, $driverCode);
+    }
+
+    /**
+     * A privacy switch that defaults to on. Read as a boolean like `sync`, so
+     * any value but `true`, `on`, `yes` or `1` turns it off: a typo withholds
+     * rather than sends.
+     */
+    private function switchedOn(string $key): bool
+    {
+        return filter_var($this->config->get('error-tracker.' . $key, true), FILTER_VALIDATE_BOOL);
     }
 
     /**
